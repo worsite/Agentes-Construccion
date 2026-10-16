@@ -1,0 +1,792 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data:; base-uri 'none'; form-action 'self'">
+<title>Ceiba: cuaderno de notas en markdown</title>
+<meta name="description" content="Ceiba es un cuaderno de notas en markdown para escribir sin ruido. Consulta los planes mensual y anual, con tres paquetes en cada ciclo.">
+<meta name="color-scheme" content="light dark">
+<meta name="theme-color" content="#FBF6EA" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#1B1915" media="(prefers-color-scheme: dark)">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='9' fill='%23FBF6EA'/%3E%3Cg fill='none' stroke='%234B5A35' stroke-width='1.8' stroke-linecap='round'%3E%3Cpath d='M16 26V14'/%3E%3Cpath d='M16 14C12 12 8.500 9 7 6C11 6.500 14.500 9 16 14ZM16 14C20 12 23.500 9 25 6C21 6.500 17.500 9 16 14Z'/%3E%3Cpath d='M16 14C16 11 16 8.500 16 5'/%3E%3C/g%3E%3C/svg%3E">
+<script>
+/* Aplica el tema guardado antes del primer pintado para evitar un parpadeo. Clave compartida con la app. */
+(function () {
+  try {
+    var p = JSON.parse(localStorage.getItem('ceiba:prefs:v1'));
+    var t = p && typeof p === 'object' ? p.tema : null;
+    if (t === 'claro' || t === 'light') document.documentElement.setAttribute('data-theme', 'light');
+    else if (t === 'oscuro' || t === 'dark') document.documentElement.setAttribute('data-theme', 'dark');
+  } catch (e) { /* sin almacenamiento o JSON roto: se sigue al sistema */ }
+})();
+</script>
+<style>
+/* ---------- Tokens ---------- */
+:root {
+  --papel: #FBF6EA;
+  --hoja: #FFFDF7;
+  --tinta: #2B2620;
+  --tinta-suave: #5E554A;
+  --linea: #E3D9C4;
+  --musgo: #4B5A35;
+  --musgo-oscuro: #3A4728;
+  --terracota: #9C4A27;
+  --arcilla: #E7C9A5;
+  --peligro: #A3281E;
+  --foco: #1F5FBF;
+  --sobre-musgo: #FFFFFF;
+  --grano: .06;
+  --serif: "Iowan Old Style", "Palatino Linotype", Palatino, "Book Antiqua", Georgia, serif;
+  --sans: "Avenir Next", "Segoe UI", system-ui, -apple-system, sans-serif;
+  --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  --e1: 4px; --e2: 8px; --e3: 12px; --e4: 16px; --e5: 24px; --e6: 32px; --e7: 48px; --e8: 72px;
+  --margen: clamp(16px, 4.5vw, 56px);
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --papel: #1B1915; --hoja: #24211C; --tinta: #EEE6D4; --tinta-suave: #B9AE9B; --linea: #3A352C;
+    --musgo: #A9BC87; --musgo-oscuro: #BFD0A0; --terracota: #E5987A; --arcilla: #5A4631;
+    --peligro: #F08A7E; --foco: #8DB8FF; --sobre-musgo: #1B1915; --grano: .09;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --papel: #1B1915; --hoja: #24211C; --tinta: #EEE6D4; --tinta-suave: #B9AE9B; --linea: #3A352C;
+  --musgo: #A9BC87; --musgo-oscuro: #BFD0A0; --terracota: #E5987A; --arcilla: #5A4631;
+  --peligro: #F08A7E; --foco: #8DB8FF; --sobre-musgo: #1B1915; --grano: .09;
+  color-scheme: dark;
+}
+
+/* ---------- Base ---------- */
+*, *::before, *::after { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
+body {
+  margin: 0; background: var(--papel); color: var(--tinta);
+  font: 400 1.0625rem/1.65 var(--serif);
+  -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility;
+}
+/* Grano de papel: estático, muy tenue, debajo del contenido. */
+body::before {
+  content: ""; position: fixed; inset: 0; z-index: -1; pointer-events: none; opacity: var(--grano);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='240' height='240'%3E%3Cfilter id='g' x='0' y='0' width='100%25' height='100%25'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.8' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 .32 0 0 0 0 .25 0 0 0 0 .17 1.4 0 0 0 -.3'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23g)'/%3E%3C/svg%3E");
+}
+:root[data-theme="dark"] body::before { filter: invert(1); }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) body::before { filter: invert(1); } }
+
+[hidden] { display: none !important; }
+img, svg { max-width: 100%; }
+a { color: inherit; }
+p { margin: 0 0 1em; }
+h1, h2, h3 { margin: 0; font-weight: 400; text-wrap: balance; }
+::selection { background: var(--arcilla); color: var(--tinta); }
+:focus-visible { outline: 2px solid transparent; outline-offset: 2px; box-shadow: 0 0 0 2px var(--papel), 0 0 0 4px var(--foco); border-radius: 6px; }
+.solo-lector { position: absolute !important; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip: rect(0 0 0 0); clip-path: inset(50%); white-space: nowrap; border: 0; }
+.contenedor { width: 100%; max-width: 1200px; margin-inline: auto; padding-inline: var(--margen); }
+.salto { position: absolute; left: 16px; top: -120px; z-index: 10; display: inline-flex; align-items: center; min-height: 44px; padding: 0 20px; background: var(--musgo); color: var(--sobre-musgo); font: 600 1rem/1 var(--sans); border-radius: 0 0 14px 14px; text-decoration: none; }
+.salto:focus-visible { top: 0; }
+.eyebrow { display: flex; align-items: center; gap: 12px; margin: 0 0 var(--e4); font: 600 .8125rem/1.2 var(--sans); letter-spacing: .14em; text-transform: uppercase; color: var(--terracota); }
+.eyebrow::before { content: ""; width: 32px; height: 1.5px; background: currentColor; }
+.seccion { padding-block: clamp(56px, 9vw, 120px); }
+.seccion-cab { margin-bottom: clamp(32px, 5vw, 56px); }
+.seccion-cab h2 { font-size: clamp(2rem, 1rem + 3.6vw, 3.5rem); line-height: 1.05; letter-spacing: -.02em; max-width: 20ch; }
+.seccion-cab p:not(.eyebrow) { max-width: 56ch; margin: var(--e4) 0 0; color: var(--tinta-suave); font-size: 1.125rem; }
+section[id], #inicio { scroll-margin-top: 16px; }
+
+/* ---------- Botones ---------- */
+.boton { white-space: nowrap; display: inline-flex; align-items: center; justify-content: center; gap: var(--e2); min-height: 44px; padding: 0 22px; border: 1.5px solid transparent; border-radius: 26px 18px 24px 20px; font: 600 1rem/1.2 var(--sans); text-decoration: none; cursor: pointer; text-align: center; transition: background-color .18s ease, color .18s ease, border-color .18s ease, transform .18s ease; }
+.boton:active { transform: translateY(1px); }
+.boton--primario { background: var(--musgo); color: var(--sobre-musgo); border-color: var(--musgo); }
+.boton--primario:hover { background: var(--musgo-oscuro); border-color: var(--musgo-oscuro); }
+.boton--secundario { background: transparent; color: var(--tinta); border-color: var(--tinta); }
+.boton--secundario:hover { background: var(--hoja); }
+.boton--grande { min-height: 52px; padding: 0 30px; font-size: 1.0625rem; }
+.enlace-texto { display: inline-flex; align-items: center; min-height: 44px; font: 600 1rem/1.2 var(--sans); color: var(--tinta); text-decoration: underline; text-decoration-color: var(--terracota); text-decoration-thickness: 1.5px; text-underline-offset: 6px; transition: color .18s ease, text-decoration-color .18s ease; }
+.enlace-texto:hover { color: var(--terracota); }
+
+/* ---------- Cabecera ---------- */
+.cabecera__fila { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 16px; padding-block: 12px; }
+.marca { order: 1; display: inline-flex; align-items: center; gap: 6px; min-height: 44px; margin-right: auto; text-decoration: none; color: var(--tinta); }
+.marca .rama--sello { width: 40px; height: 40px; flex: none; }
+.marca__nombre { font: 700 1.5rem/1 var(--serif); letter-spacing: -.01em; }
+.cabecera__acciones { order: 2; display: flex; align-items: center; gap: var(--e2); }
+.cabecera__nav { order: 3; flex-basis: 100%; display: flex; flex-wrap: wrap; justify-content: space-between; border-top: 1px solid var(--linea); }   /* con texto ampliado los enlaces pasan a otra línea en vez de salirse de la pantalla */
+.cabecera__nav a { display: inline-flex; align-items: center; min-height: 44px; padding: 0 var(--e3); font: 500 .9375rem/1 var(--sans); text-decoration: none; color: var(--tinta-suave); transition: color .18s ease; }
+.cabecera__nav a:hover { color: var(--tinta); text-decoration: underline; text-decoration-color: var(--terracota); text-decoration-thickness: 1.5px; text-underline-offset: 6px; }
+.cabecera .boton { min-height: 44px; padding: 0 16px; font-size: .9375rem; }
+.tema-boton { white-space: nowrap; display: inline-flex; align-items: center; justify-content: center; gap: var(--e2); min-width: 44px; height: 44px; padding: 0 12px; border: 1.5px solid var(--linea); border-radius: 22px 16px 20px 18px; background: var(--hoja); color: var(--tinta); font: 500 .9375rem/1 var(--sans); cursor: pointer; transition: background-color .18s ease, border-color .18s ease; }
+.tema-boton:hover { border-color: var(--tinta-suave); }
+.tema-boton svg { width: 20px; height: 20px; flex: none; fill: none; stroke: currentColor; stroke-width: 1.75; stroke-linecap: round; stroke-linejoin: round; transition: transform .2s ease; }
+.tema-boton[aria-pressed="true"] svg { transform: rotate(180deg); }
+@media (max-width: 999px) { .tema-texto { position: absolute; width: 1px; height: 1px; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); clip-path: inset(50%); white-space: nowrap; } }
+@media (min-width: 720px) {
+  .cabecera__fila { flex-wrap: nowrap; gap: 24px; padding-block: 16px; }
+  .cabecera__nav { order: 2; flex-basis: auto; border-top: 0; gap: 4px; margin-left: auto; }
+  .cabecera__acciones { order: 3; gap: var(--e3); }
+  .marca { margin-right: 0; }
+}
+
+/* ---------- Héroe ---------- */
+.heroe { position: relative; overflow-x: clip; padding-block: clamp(24px, 5vw, 72px) clamp(48px, 6vw, 96px); }
+.heroe__rejilla { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--e7); align-items: center; animation: fundido .5s ease-out; }   /* una columna que nunca pasa del ancho: con texto ampliado la maqueta no la ensancha */
+@keyframes fundido { from { opacity: 0; } to { opacity: 1; } }
+.heroe h1 { font-size: clamp(2.6rem, 1rem + 6vw, 4.75rem); line-height: 1; letter-spacing: -.028em; margin-bottom: var(--e5); }
+.heroe h1 em { color: var(--terracota); font-style: italic; }
+.lema { margin: 0 0 var(--e3); font: italic 400 clamp(1.25rem, 1rem + 1vw, 1.625rem)/1.3 var(--serif); }
+.heroe__texto > p:not(.lema):not(.heroe__nota):not(.eyebrow) { max-width: 44ch; color: var(--tinta-suave); font-size: 1.125rem; }
+.heroe__acciones { display: flex; flex-wrap: wrap; align-items: center; gap: var(--e2) var(--e5); margin-top: var(--e6); }
+.heroe__nota { margin: var(--e4) 0 0; font: .875rem/1.5 var(--sans); color: var(--tinta-suave); max-width: 44ch; }
+.heroe__lamina { position: relative; padding: 150px 8px 8px; }
+.heroe__lamina > .rama { position: absolute; z-index: 0; top: 0; right: -30%; width: 150%; max-width: none; pointer-events: none; }
+@media (min-width: 600px) {
+  .heroe__lamina { padding-top: 230px; }
+  .heroe__lamina > .rama { right: -4%; width: 100%; }
+}
+@media (min-width: 900px) {
+  .heroe__rejilla { grid-template-columns: minmax(0, 1fr) minmax(0, .94fr); gap: 56px; }
+  .heroe__lamina { padding: 210px 0 8px; }
+  .heroe__lamina > .rama { right: -12%; width: 116%; }
+}
+
+/* Ramas dibujadas en línea */
+svg.rama { overflow: visible; fill: none; stroke: var(--musgo); stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; display: block; }
+svg.rama path { vector-effect: non-scaling-stroke; }
+.tronco, .espina, .ramita, .pedicelo { stroke: var(--terracota); }
+.corteza { stroke: var(--terracota); stroke-opacity: .45; stroke-dasharray: 2 7; }
+.espina { fill: var(--terracota); fill-opacity: .18; }
+.vaina { stroke: var(--terracota); fill: var(--arcilla); fill-opacity: .55; }
+.vaina-linea { stroke: var(--terracota); stroke-opacity: .6; }
+svg.rama use { stroke: var(--musgo); fill: var(--musgo); fill-opacity: .1; }
+.defs-svg { position: absolute; width: 0; height: 0; overflow: hidden; }
+
+/* Maqueta de papel */
+.maqueta { position: relative; z-index: 1; margin: 0; transform: rotate(-1.2deg); }
+.maqueta::before { content: ""; position: absolute; inset: 8px -6px -8px 6px; z-index: -1; background: var(--arcilla); opacity: .55; border: 1px solid var(--linea); border-radius: 24px 30px 20px 28px; transform: rotate(2.4deg); }
+.maqueta__hoja { position: relative; overflow: hidden; background: var(--hoja); border: 1px solid var(--linea); border-radius: 28px 20px 26px 22px; }
+.maqueta__barra { display: flex; justify-content: space-between; align-items: center; gap: var(--e3); padding: 10px 18px; border-bottom: 1px solid var(--linea); font: .8125rem/1.3 var(--sans); color: var(--tinta-suave); }
+.maqueta__archivo { font-family: var(--mono); color: var(--tinta); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.maqueta__estado { white-space: nowrap; }
+@media (max-width: 479px) { .maqueta__estado .solo-ancho { display: none; } }
+.atajo { white-space: nowrap; }
+.maqueta__cuerpo { display: grid; }
+.maqueta__col { min-width: 0; padding: 14px 18px 18px; }
+.maqueta__col + .maqueta__col { border-top: 1px dashed var(--linea); }
+.maqueta__rotulo { margin: 0 0 var(--e2); font: 600 .75rem/1.2 var(--sans); letter-spacing: .12em; text-transform: uppercase; color: var(--tinta-suave); }
+.maqueta__fuente { margin: 0; font: .8125rem/1.75 var(--mono); color: var(--tinta); white-space: pre-wrap; overflow-wrap: anywhere; }
+.maqueta__fuente code { font: inherit; }
+.md-marca { color: var(--terracota); }
+.cursor { display: inline-block; width: 1.5px; height: 1.15em; margin-left: 2px; vertical-align: text-bottom; background: var(--terracota); }
+.maqueta__render { font: 1rem/1.6 var(--serif); }
+.maqueta__render > :last-child { margin-bottom: 0; }
+.maqueta__render p { margin: 0 0 .7em; }
+.r-titulo { font: 700 1.5rem/1.15 var(--serif); letter-spacing: -.01em; margin: 0 0 .5em !important; }
+.maqueta__render ul { margin: 0 0 .9em; padding: 0; list-style: none; }
+.maqueta__render li { position: relative; padding-left: 20px; margin-bottom: .25em; }
+.maqueta__render li::before { content: ""; position: absolute; left: 3px; top: .62em; width: 6px; height: 6px; border-radius: 50%; background: var(--musgo); }
+.maqueta__render li.r-tarea::before { display: none; }
+.casilla { position: absolute; left: 0; top: .38em; width: 13px; height: 13px; border: 1.5px solid var(--tinta-suave); border-radius: 4px 3px 4px 3px; }
+.maqueta__render blockquote { margin: 0; padding: 2px 0 2px 14px; border-left: 2px solid var(--terracota); font-style: italic; color: var(--tinta-suave); }
+.maqueta figcaption { margin-top: var(--e5); padding-left: 8px; font: .875rem/1.5 var(--sans); color: var(--tinta-suave); max-width: 46ch; }
+kbd { display: inline-block; min-width: 1.9em; padding: 1px 7px 2px; margin: 0 1px; border: 1px solid var(--linea); border-bottom-width: 2px; border-radius: 6px 4px 6px 4px; background: var(--hoja); color: var(--tinta); font: .8125rem/1.5 var(--mono); text-align: center; }
+@media (min-width: 560px) {
+  .maqueta__cuerpo { grid-template-columns: 1fr 1fr; }
+  .maqueta__col + .maqueta__col { border-top: 0; border-left: 1px dashed var(--linea); }
+}
+
+/* ---------- Principios ---------- */
+.principios__lista { display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); column-gap: var(--e5); row-gap: var(--e7); }
+.principio { grid-column: 1 / -1; position: relative; padding-left: var(--e5); border-left: 1.5px solid var(--linea); }
+.principio__num { margin: 0 0 var(--e2); font: italic 400 clamp(2.5rem, 5vw, 4rem)/1 var(--serif); color: var(--terracota); }
+.principio h3 { font: 700 clamp(1.5rem, 1.1rem + 1vw, 1.875rem)/1.15 var(--serif); letter-spacing: -.01em; margin-bottom: var(--e3); }
+.principio__entrada { font: italic 400 clamp(1.25rem, 1rem + .7vw, 1.625rem)/1.35 var(--serif); margin-bottom: var(--e3); }
+.principio p:last-child { margin-bottom: 0; }
+.principio p:not(.principio__num):not(.principio__entrada) { max-width: 46ch; color: var(--tinta-suave); }
+.atajos { list-style: none; margin: var(--e5) 0 0; padding: 0; display: grid; gap: var(--e2) var(--e5); font: .9375rem/1.4 var(--sans); }
+.atajos li { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; min-height: 32px; color: var(--tinta-suave); }
+.atajos span { white-space: nowrap; }
+@media (min-width: 900px) {
+  .principio { padding-left: 0; border-left: 0; border-top: 1.5px solid var(--tinta); padding-top: var(--e4); }
+  .principio--1 { grid-column: 1 / span 6; }
+  .principio--2 { grid-column: 8 / span 5; margin-top: var(--e8); }
+  .principio--3 { grid-column: 3 / span 8; display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); column-gap: var(--e6); }
+  .principio--3 > .principio__num, .principio--3 > h3 { grid-column: 1 / -1; }
+  .principio--3 .atajos { margin-top: 0; align-content: start; }
+}
+
+/* ---------- Planes ---------- */
+.planes { background: var(--hoja); border-top: 1px solid var(--linea); }
+.ciclo-fila { display: flex; flex-wrap: wrap; align-items: center; gap: var(--e3) var(--e5); }
+.ciclo { display: inline-flex; gap: 4px; margin: 0; padding: 4px; min-width: 0; border: 1px solid var(--linea); background: var(--papel); border-radius: 30px 22px 28px 24px; }
+.ciclo__opcion { position: relative; display: block; }
+.ciclo__opcion input { position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; opacity: 0; cursor: pointer; }
+.ciclo__texto { display: flex; align-items: center; justify-content: center; min-width: 104px; min-height: 44px; padding: 0 22px; border-radius: 24px 16px 22px 18px; font: 600 1rem/1 var(--sans); color: var(--tinta); transition: background-color .18s ease, color .18s ease; }
+.ciclo__opcion input:checked + .ciclo__texto { background: var(--musgo); color: var(--sobre-musgo); }
+@media (max-width: 479px) { .ciclo { max-width: 100%; } .ciclo__texto { min-width: 0; padding: 0 14px; } }   /* con texto ampliado en 320 px los dos segmentos caben en la pantalla */
+.ciclo__opcion input:not(:checked):hover + .ciclo__texto { background: var(--linea); }
+@media (forced-colors: active) {   /* el sistema reemplaza el fondo: la opción marcada se distingue con los colores de selección del sistema */
+  .ciclo__opcion input:checked + .ciclo__texto { forced-color-adjust: none; background: Highlight; color: HighlightText; }
+}
+.ciclo__opcion input:focus-visible + .ciclo__texto { box-shadow: 0 0 0 2px var(--papel), 0 0 0 4px var(--foco); outline: 2px solid transparent; outline-offset: 2px; }
+.ciclo__nota { margin: 0; font: italic 400 1.0625rem/1.4 var(--serif); color: var(--terracota); }
+.aviso-demo { margin: var(--e4) 0 0; font: .9375rem/1.5 var(--sans); color: var(--tinta-suave); }
+.planes__rejilla { display: grid; gap: var(--e6); margin-top: var(--e7); padding-top: 14px; }
+.plan { position: relative; display: grid; grid-template-columns: minmax(0, 1fr); grid-template-areas: "cab" "pre" "fun" "cta"; grid-template-rows: auto auto 1fr auto; row-gap: var(--e5); padding: 32px 26px 26px; background: var(--papel); border: 1px solid var(--linea); border-radius: 28px 20px 26px 22px; }
+.plan:nth-child(2) { border-radius: 22px 30px 20px 28px; }
+.plan:nth-child(3) { border-radius: 20px 26px 28px 18px; }
+.plan--destacado { border: 2px solid var(--musgo); }
+.plan__etiqueta { position: absolute; top: -15px; left: 24px; margin: 0; padding: 8px 14px 7px; background: var(--musgo); color: var(--sobre-musgo); font: 600 .8125rem/1 var(--sans); letter-spacing: .05em; border-radius: 14px 10px 14px 8px; }
+.plan__cab { grid-area: cab; }
+.plan__nombre { font: 700 1.875rem/1.1 var(--serif); letter-spacing: -.01em; }
+.plan__para { margin: var(--e2) 0 0; color: var(--tinta-suave); font-size: 1rem; line-height: 1.45; }
+.plan__precio { grid-area: pre; }
+.plan__importe { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 6px; margin: 0; }
+.moneda { font: 600 1rem/1 var(--sans); color: var(--tinta-suave); }
+.cifra { font: 400 3.25rem/1 var(--serif); letter-spacing: -.03em; font-variant-numeric: lining-nums tabular-nums; }
+.unidad { font: 1rem/1 var(--sans); color: var(--tinta-suave); }
+.plan__detalle { margin: var(--e3) 0 0; font: .9375rem/1.45 var(--sans); color: var(--tinta-suave); }
+.plan__ahorro { text-wrap: balance; margin: var(--e2) 0 0; font: 600 .9375rem/1.4 var(--sans); color: var(--terracota); }
+.plan__fun { grid-area: fun; border-top: 1px solid var(--linea); padding-top: var(--e5); }
+.plan__lista { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; font-size: 1rem; line-height: 1.45; }
+.plan__lista li { position: relative; padding-left: 22px; }
+.plan__lista li::before { content: ""; position: absolute; left: 2px; top: .56em; width: 9px; height: 9px; border-radius: 50% 40% 55% 45%; background: var(--musgo); }
+.plan__prep { margin-top: var(--e5); }
+.plan__prep-titulo { margin: 0 0 var(--e2); font: 600 .8125rem/1.3 var(--sans); letter-spacing: .08em; text-transform: uppercase; color: var(--terracota); }
+.plan__prep .plan__lista { color: var(--tinta-suave); font-style: italic; }
+.plan__prep .plan__lista li::before { background: transparent; border: 1.5px solid var(--terracota); }
+.plan__cta { grid-area: cta; align-self: end; }
+.planes__nota { margin: var(--e6) 0 0; max-width: 62ch; font: .9375rem/1.55 var(--sans); color: var(--tinta-suave); }
+.precios-simple { width: 100%; border-collapse: collapse; margin-top: var(--e6); font: 1rem/1.4 var(--sans); }
+.precios-simple caption { text-align: left; padding-bottom: var(--e3); font: italic 1.0625rem var(--serif); color: var(--tinta-suave); }
+.precios-simple th, .precios-simple td { padding: 12px 10px; border-bottom: 1px solid var(--linea); text-align: left; }
+.precios-simple thead th { border-bottom: 2px solid var(--tinta); }
+@media (min-width: 600px) and (max-width: 819px) {
+  .plan { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); grid-template-areas: "cab fun" "pre fun" "cta fun"; grid-template-rows: auto auto 1fr; column-gap: var(--e6); }
+  .plan__fun { border-top: 0; padding-top: 0; border-left: 1px solid var(--linea); padding-left: var(--e6); }
+}
+@media (min-width: 820px) {
+  .planes__rejilla { grid-template-columns: 1fr 1.1fr 1fr; align-items: stretch; gap: var(--e5); }
+  .plan--destacado { margin-top: -22px; }
+}
+
+/* ---------- Comparativa ---------- */
+.comparativa-secc { background: var(--hoja); border-bottom: 1px solid var(--linea); padding-top: 0; }
+.comparativa { width: 100%; border-collapse: collapse; table-layout: fixed; }
+.comparativa caption { text-align: left; padding-bottom: var(--e4); font: italic 400 1.0625rem/1.4 var(--serif); color: var(--tinta-suave); }
+.comparativa th, .comparativa td { padding: 14px 10px; border-bottom: 1px solid var(--linea); text-align: left; vertical-align: top; overflow-wrap: anywhere; }
+.comparativa thead th { padding-block: 12px; border-bottom: 2px solid var(--tinta); font: 700 1.1875rem/1.2 var(--serif); }
+.comparativa tbody th { font: 400 1.0625rem/1.4 var(--serif); }
+.comparativa td { font: .9375rem/1.4 var(--sans); }
+.comparativa .no { color: var(--tinta-suave); }
+.comparativa .prep { color: var(--terracota); font-style: italic; }
+.comparativa .col-destacada { background: var(--papel); }
+.comparativa col:first-child { width: 40%; }
+.comparativa__nota { margin: var(--e5) 0 0; max-width: 62ch; font: .9375rem/1.55 var(--sans); color: var(--tinta-suave); }
+@media (max-width: 599px) {
+  .comparativa-secc .contenedor { padding-inline: 8px; }
+  .comparativa-secc .seccion-cab, .comparativa__nota { padding-inline: 8px; }
+  .comparativa th, .comparativa td { padding: 10px 3px; }
+  .comparativa thead th { font-size: .875rem; }
+  .comparativa tbody th { font-size: .9375rem; }
+  .comparativa td { font-size: .75rem; }
+  .comparativa col:first-child { width: 31%; }
+}
+
+/* ---------- Preguntas ---------- */
+.preguntas__marco { display: grid; gap: var(--e6); }
+.preguntas .rama--pequena { width: min(300px, 70%); margin-top: var(--e6); }
+.faq { border-top: 1.5px solid var(--tinta); }
+.faq details { border-bottom: 1px solid var(--linea); }
+.faq summary { display: flex; align-items: center; justify-content: space-between; gap: var(--e4); min-height: 44px; padding: 14px 4px; font: 400 1.1875rem/1.35 var(--serif); cursor: pointer; list-style: none; transition: color .18s ease; }
+.faq summary::-webkit-details-marker { display: none; }
+.faq summary:hover { color: var(--terracota); }
+.faq summary::after { content: ""; flex: none; width: 14px; height: 14px; background: linear-gradient(currentColor, currentColor) center / 100% 1.5px no-repeat, linear-gradient(currentColor, currentColor) center / 1.5px 100% no-repeat; transition: transform .2s ease; }
+.faq details[open] summary::after { background-size: 100% 1.5px, 0 0; }
+.faq__resp { padding: 0 4px var(--e4); max-width: 60ch; color: var(--tinta-suave); }
+.faq__resp p { margin: 0 0 .8em; }
+.faq__resp p:last-child { margin-bottom: 0; }
+.faq code { font: .875em var(--mono); padding: 1px 5px; background: var(--hoja); border: 1px solid var(--linea); border-radius: 5px 3px 5px 3px; color: var(--tinta); }
+@media (min-width: 900px) {
+  .preguntas__marco { grid-template-columns: minmax(0, 5fr) minmax(0, 7fr); gap: var(--e8); align-items: start; }
+  .preguntas .seccion-cab { margin-bottom: 0; }
+}
+
+/* ---------- Cierre y pie ---------- */
+.cierre { padding-block: 0 clamp(56px, 9vw, 112px); }
+.cierre__hoja { position: relative; overflow: hidden; padding: clamp(32px, 6vw, 72px) clamp(24px, 5vw, 72px); background: var(--hoja); border: 1px solid var(--linea); border-radius: 44px 24px 40px 28px; }
+.cierre h2 { font-size: clamp(2.1rem, 1rem + 4.2vw, 4rem); line-height: 1.02; letter-spacing: -.025em; max-width: 14ch; margin-bottom: var(--e4); }
+.cierre p { max-width: 46ch; color: var(--tinta-suave); font-size: 1.125rem; }
+.cierre__acciones { display: flex; flex-wrap: wrap; gap: var(--e3) var(--e4); margin-top: var(--e6); position: relative; z-index: 1; }
+.cierre__hoja > .rama { display: block; width: 86%; margin: var(--e6) calc(-1 * clamp(24px, 5vw, 72px)) calc(-1 * clamp(32px, 6vw, 72px)) auto; transform: translateX(8%); pointer-events: none; }
+@media (min-width: 760px) {
+  .cierre__hoja > .rama { position: absolute; right: -30px; bottom: -24px; width: min(420px, 48%); margin: 0; transform: none; }
+}
+.pie { padding-block: var(--e7) var(--e8); border-top: 1px solid var(--linea); }
+.pie__marco { display: grid; gap: var(--e5); }
+.pie__marca { display: flex; align-items: center; gap: 8px; font: 400 1rem/1.3 var(--serif); color: var(--tinta-suave); }
+.pie__marca .rama--sello { width: 40px; height: 40px; flex: none; }
+.pie__marca strong { font: 700 1.25rem/1 var(--serif); color: var(--tinta); }
+.pie .aviso-demo { margin: 0; color: var(--tinta); font-weight: 500; }
+.pie nav { display: flex; flex-wrap: wrap; gap: 0 var(--e4); }
+.pie nav a { display: inline-flex; align-items: center; min-height: 44px; font: 500 .9375rem/1 var(--sans); color: var(--tinta-suave); text-underline-offset: 6px; text-decoration-color: var(--terracota); }
+.pie nav a:hover { color: var(--tinta); }
+.pie__pequeno { margin: 0; max-width: 62ch; font: .875rem/1.55 var(--sans); color: var(--tinta-suave); }
+@media (min-width: 900px) {
+  .pie__marco { grid-template-columns: 1fr auto; align-items: center; column-gap: var(--e7); }
+  .pie__marco > .aviso-demo, .pie__marco > .pie__pequeno { grid-column: 1; }
+  .pie__marco nav { grid-column: 2; grid-row: 1 / span 3; justify-content: flex-end; }
+}
+
+/* ---------- Movimiento ---------- */
+@media (prefers-reduced-motion: no-preference) { html { scroll-behavior: smooth; } }
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { transition-duration: 0s !important; animation-duration: 0s !important; animation-iteration-count: 1 !important; scroll-behavior: auto !important; }
+}
+</style>
+</head>
+<body id="inicio">
+<a class="salto" href="#contenido">Saltar al contenido</a>
+<svg class="defs-svg" width="0" height="0" aria-hidden="true" focusable="false"><defs><path id="foliolo" vector-effect="non-scaling-stroke" d="M0 0C5.5-9 5.5-27 0-42C-5.5-27-5.5-9 0 0Z"/><g id="hoja"><path vector-effect="non-scaling-stroke" d="M0 0L0-15"/><g transform="translate(0-15)"><use href="#foliolo" transform="rotate(-68) scale(0.6)"/><path vector-effect="non-scaling-stroke" d="M0-3L0-19.8" transform="rotate(-68)"/><use href="#foliolo" transform="rotate(-45) scale(0.8)"/><path vector-effect="non-scaling-stroke" d="M0-3L0-26.4" transform="rotate(-45)"/><use href="#foliolo" transform="rotate(-22) scale(0.95)"/><path vector-effect="non-scaling-stroke" d="M0-3L0-31.4" transform="rotate(-22)"/><use href="#foliolo" transform="rotate(0) scale(1.08)"/><path vector-effect="non-scaling-stroke" d="M0-3L0-35.6" transform="rotate(0)"/><use href="#foliolo" transform="rotate(22) scale(0.95)"/><path vector-effect="non-scaling-stroke" d="M0-3L0-31.4" transform="rotate(22)"/><use href="#foliolo" transform="rotate(45) scale(0.8)"/><path vector-effect="non-scaling-stroke" d="M0-3L0-26.4" transform="rotate(45)"/><use href="#foliolo" transform="rotate(68) scale(0.6)"/><path vector-effect="non-scaling-stroke" d="M0-3L0-19.8" transform="rotate(68)"/></g></g><g id="hoja5"><path vector-effect="non-scaling-stroke" d="M0 0L0-12"/><g transform="translate(0-12)"><use href="#foliolo" transform="rotate(-56) scale(0.62)"/><use href="#foliolo" transform="rotate(-28) scale(0.88)"/><use href="#foliolo" transform="rotate(0) scale(1)"/><use href="#foliolo" transform="rotate(28) scale(0.88)"/><use href="#foliolo" transform="rotate(56) scale(0.62)"/></g></g></defs></svg>
+
+<header class="cabecera">
+  <div class="contenedor cabecera__fila">
+    <a class="marca" href="#inicio"><svg class="rama rama--sello" viewBox="0 0 44 44" aria-hidden="true" focusable="false"><path class="tronco" d="M5 38C13 36 21 30 28 20C31 15 34 11 38 6"/><path class="espina" d="M12 36.5L14.6 40L15.4 35.2M22 29.4L24 33L26.4 28.4M27.4 21L30 24.5L31.5 19.5"/><path class="ramita" d="M17 33C19 28 19 24 17 19"/><use href="#hoja5" transform="translate(17 19) rotate(-14) scale(.36)"/><use href="#hoja5" transform="translate(26 23) rotate(42) scale(.3)"/><use href="#hoja5" transform="translate(37 8) rotate(50) scale(.34)"/></svg><span class="marca__nombre">Ceiba</span></a>
+    <nav class="cabecera__nav" aria-label="Secciones">
+      <a href="#principios">Principios</a>
+      <a href="#planes">Planes</a>
+      <a href="#preguntas">Preguntas</a>
+    </nav>
+    <div class="cabecera__acciones">
+      <button type="button" class="tema-boton" id="tema" aria-pressed="false" hidden>
+        <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="8.5"/><path d="M12 3.5a8.5 8.5 0 0 1 0 17z" fill="currentColor"/></svg>
+        <span class="tema-texto">Tema oscuro</span>
+      </button>
+      <a class="boton boton--secundario" href="app.html">Abrir la app</a>
+    </div>
+  </div>
+</header>
+
+<main id="contenido" tabindex="-1">
+
+  <section class="heroe" aria-labelledby="t-heroe">
+    <div class="contenedor heroe__rejilla">
+      <div class="heroe__texto">
+        <p class="eyebrow">Cuaderno de notas en markdown</p>
+        <h1 id="t-heroe">Escribe. <em>Lo demás puede esperar.</em></h1>
+        <p class="lema">Un cuaderno quieto para escribir.</p>
+        <p>Una lista a un lado, una página al centro y el resultado renderizado a un atajo de distancia. Tus notas se guardan en este navegador.</p>
+        <div class="heroe__acciones">
+          <a class="boton boton--primario boton--grande" href="#planes">Probar 14 días</a>
+          <a class="enlace-texto" href="app.html">Ver cómo se escribe</a>
+        </div>
+        <p class="heroe__nota">Es una demostración: ningún plan se cobra.</p>
+      </div>
+      <div class="heroe__lamina">
+        <svg class="rama" viewBox="0 0 760 300" aria-hidden="true" focusable="false"><path class="tronco" d="M797.9 36.8C789.4 38.2 765.3 41.7 747 44.8C728.6 47.9 706.9 51.7 687.8 55.5C668.6 59.3 650.9 64.5 632.3 67.7C613.6 70.9 594.3 72.9 575.8 74.9C557.4 77 539.3 77.3 521.3 80.1C503.3 82.8 485.7 87.8 467.7 91.5C449.7 95.1 431.3 99.1 413.1 102C394.9 104.9 376.9 107.1 358.7 108.7C340.5 110.2 322.1 110.6 304.1 111.4C286.1 112.2 268.5 111.4 250.6 113.3C232.8 115.2 215.1 119.7 197.1 123.1C179 126.4 160.7 130.3 142.5 133.3C124.3 136.3 106 138.7 87.9 141.1C69.8 143.5 50.1 145.9 33.8 147.8C17.6 149.7 -2.4 151.7 -9.7 152.5"/><path class="tronco" d="M794.1 15.2C785.7 16.7 761.9 20.7 743.4 24.3C725 27.8 702.6 32.1 683.4 36.3C664.3 40.5 646.7 45.9 628.5 49.5C610.4 53 592.7 55.1 574.4 57.5C556.1 60 537.1 60.7 518.7 63.9C500.3 67.1 482.1 72.7 464.1 76.7C446.1 80.7 428.7 84.9 410.9 88.1C393.1 91.3 375.1 93.9 357.3 95.8C339.5 97.7 321.9 98.5 303.9 99.6C285.9 100.8 267.5 100.3 249.4 102.7C231.2 105.1 213 110.1 194.9 113.8C176.9 117.5 159.2 121.6 141.2 125C123.1 128.3 104.9 131.1 86.8 133.9C68.8 136.7 49.3 139.5 33.1 141.7C16.9 144 -3.1 146.6 -10.3 147.5"/><path class="tronco" d="M-9.7 152.5L-10.3 147.5"/><path class="corteza" d="M765.8 31.1C750.9 33.9 705.1 42.5 676.4 48C647.7 53.6 621.1 60.2 593.6 64.5C566 68.7 538.2 69 510.9 73.6C483.7 78.2 457 87.1 430 92C403 96.9 376 100.8 349 103.2C322 105.6 295 103.5 268 106.4C241 109.3 214.1 115.7 187 120.5C159.9 125.2 129.3 131 105.3 134.9C81.2 138.7 53.2 142.2 42.7 143.6"/><path class="espina" d="M721.4 49L714.4 60.6L709.6 51.3"/><path class="espina" d="M670.7 39.4L659.5 30.7L659.2 42.1"/><path class="espina" d="M628.6 68.4L621.8 80L617.1 70.5"/><path class="espina" d="M589.2 56.1L579.2 43L577.8 57.2"/><path class="espina" d="M544.8 77.2L537.2 86.6L533.6 78.5"/><path class="espina" d="M505.7 66.5L495.3 59.3L494.7 68.9"/><path class="espina" d="M482.1 88L476.9 102.6L471.3 90.7"/><path class="espina" d="M425.2 85.6L415.2 77.3L414.5 87.4"/><path class="espina" d="M382.1 106.1L374.8 114.6L371.5 107.4"/><path class="espina" d="M353.6 96.3L344.4 87.2L343.1 97.3"/><path class="espina" d="M300.2 111.4L292.2 119.1L289.9 111.5"/><path class="espina" d="M272.8 100.6L264.3 93.7L262.6 101.2"/><path class="espina" d="M237.9 114.9L231.6 125.5L228 116.7"/><path class="espina" d="M199.8 112.7L190.1 106L190.1 114.9"/><path class="espina" d="M156.5 131L150 139.7L146.9 132.6"/><path class="espina" d="M109.4 130.4L100.6 123.7L100 131.8"/><path class="espina" d="M66.3 143.9L59.8 152.8L57.1 145.2"/><path class="espina" d="M37.6 141.2L29.2 134.8L28.5 142.3"/><path class="ramita" d="M713.6 40.2Q699.3 75.2 700.8 113"/><path class="ramita" d="M612 62Q632 107.9 632.4 157.9"/><path class="ramita" d="M501.9 75.5Q476.9 110.7 470.4 153.4"/><path class="ramita" d="M385 99Q398.9 154.5 388.9 210.9"/><path class="ramita" d="M268 106.4Q250.6 143.3 248.6 184.1"/><path class="ramita" d="M160 126Q162.6 158.5 153.3 189.6"/><path class="ramita" d="M61.2 141.2Q46.4 155.5 40 175.1"/><path class="ramita" d="M547.5 68.6Q558.1 47.3 557 23.6"/><path class="ramita" d="M223 112.5Q214.6 93.7 216.1 73.1"/><path class="pedicelo" d="M548.3 77L546.8 90.9"/><path class="vaina" d="M546.8 90.9C528.1 118.1 535.8 148.1 540.7 148.6C545.6 149.1 559.5 121.4 546.8 90.9Z"/><path class="vaina-linea" d="M546.1 97.8L541.3 142.8"/><path class="pedicelo" d="M322.2 111.2L323.7 125.1"/><path class="vaina" d="M323.7 125.1C312.8 151.4 324.7 175.3 328.9 174.8C333.1 174.4 339.8 148.5 323.7 125.1Z"/><path class="vaina-linea" d="M324.3 131.1L328.4 169.8"/><path class="pedicelo" d="M124.1 136L123.2 150"/><path class="vaina" d="M123.2 150C110.9 169.2 117 189.7 120.4 189.9C123.8 190.1 132.6 170.7 123.2 150Z"/><path class="vaina-linea" d="M122.8 154.8L120.7 185.9"/><use href="#hoja" transform="translate(700.8 113) rotate(177.8) scale(1.1)"/><use href="#hoja" transform="translate(703 77.4) rotate(237.1) scale(0.9)"/><use href="#hoja" transform="translate(700.8 98) rotate(124.8) scale(0.9)"/><use href="#hoja" transform="translate(632.4 157.9) rotate(179.5) scale(1.2)"/><use href="#hoja" transform="translate(627.5 110.8) rotate(241.9) scale(1)"/><use href="#hoja" transform="translate(631.4 138) rotate(118.6) scale(1)"/><use href="#hoja" transform="translate(470.4 153.4) rotate(188.6) scale(1.1)"/><use href="#hoja" transform="translate(480.9 114.1) rotate(241.7) scale(0.9)"/><use href="#hoja" transform="translate(473.7 136.6) rotate(137.3) scale(0.9)"/><use href="#hoja" transform="translate(388.9 210.9) rotate(190.1) scale(1.2)"/><use href="#hoja" transform="translate(393 157) rotate(250.9) scale(1)"/><use href="#hoja" transform="translate(392 188.4) rotate(131.2) scale(1.1)"/><use href="#hoja" transform="translate(248.6 184.1) rotate(182.7) scale(1)"/><use href="#hoja" transform="translate(254.1 145.8) rotate(243.1) scale(0.8)"/><use href="#hoja" transform="translate(250 167.9) rotate(125.4) scale(0.8)"/><use href="#hoja" transform="translate(153.3 189.6) rotate(196.6) scale(0.9)"/><use href="#hoja" transform="translate(159.5 159.4) rotate(256.6) scale(0.7)"/><use href="#hoja" transform="translate(40 175.1) rotate(198) scale(0.8)"/><use href="#hoja" transform="translate(48.1 157.5) rotate(250.6) scale(0.6)"/><use href="#hoja" transform="translate(557 23.6) rotate(-2.6) scale(0.8)"/><use href="#hoja" transform="translate(555.4 45.8) rotate(45.6) scale(0.6)"/><use href="#hoja" transform="translate(216.1 73.1) rotate(4) scale(0.8)"/><use href="#hoja" transform="translate(216.9 92.4) rotate(62.4) scale(0.6)"/></svg>
+        <figure class="maqueta">
+          <div class="maqueta__hoja">
+            <div class="maqueta__barra">
+              <span class="maqueta__archivo">cuaderno-de-campo.md</span>
+              <span class="maqueta__estado">Guardado<span class="solo-ancho"> en este navegador</span></span>
+            </div>
+            <div class="maqueta__cuerpo">
+              <div class="maqueta__col">
+                <p class="maqueta__rotulo">Lo que escribes</p>
+                <pre class="maqueta__fuente"><code><span class="md-marca"># </span>Cuaderno de campo
+
+Hoy caminé hasta el <span class="md-marca">*</span>río<span class="md-marca">*</span>.
+Tres cosas para recordar:
+
+<span class="md-marca">- </span>La luz de las seis
+<span class="md-marca">- </span>El <span class="md-marca">**</span>sonido<span class="md-marca">**</span> del agua
+<span class="md-marca">- [ ] </span>Llamar a Inés
+
+<span class="md-marca">&gt; </span>Escribir es mirar despacio.<span class="cursor" aria-hidden="true"></span></code></pre>
+              </div>
+              <div class="maqueta__col">
+                <p class="maqueta__rotulo">Lo que lees</p>
+                <div class="maqueta__render">
+                  <p class="r-titulo">Cuaderno de campo</p>
+                  <p>Hoy caminé hasta el <em>río</em>.<br>Tres cosas para recordar:</p>
+                  <ul>
+                    <li>La luz de las seis</li>
+                    <li>El <strong>sonido</strong> del agua</li>
+                    <li class="r-tarea"><span class="casilla" aria-hidden="true"></span><span class="solo-lector">Pendiente: </span>Llamar a Inés</li>
+                  </ul>
+                  <blockquote>Escribir es mirar despacio.</blockquote>
+                </div>
+              </div>
+            </div>
+          </div>
+          <figcaption>Ilustración: en la app ves una vista a la vez, Escribir o Vista previa, y cambias con <span class="atajo"><kbd>Alt</kbd> <kbd>P</kbd></span>.</figcaption>
+        </figure>
+      </div>
+    </div>
+  </section>
+
+  <section id="principios" class="seccion principios" aria-labelledby="t-principios">
+    <div class="contenedor">
+      <header class="seccion-cab">
+        <p class="eyebrow">Principios</p>
+        <h2 id="t-principios">Un cuaderno, no un panel de control.</h2>
+      </header>
+      <div class="principios__lista">
+        <article class="principio principio--1">
+          <p class="principio__num" aria-hidden="true">i.</p>
+          <h3>Un solo panel</h3>
+          <p class="principio__entrada">Una lista a un lado y una página en blanco al centro.</p>
+          <p>Alternas entre escribir y leer el resultado en el mismo lugar, con un atajo. No hay barras de herramientas que te pidan decidir el formato mientras piensas.</p>
+        </article>
+        <article class="principio principio--2">
+          <p class="principio__num" aria-hidden="true">ii.</p>
+          <h3>Tus notas se quedan contigo</h3>
+          <p class="principio__entrada">Se guardan en este navegador, en este dispositivo.</p>
+          <p>No hay cuentas ni servidor, y por eso tampoco sincronización: si borras los datos del sitio o usas una ventana privada, las notas se pierden. Para eso existe la copia de seguridad en un archivo.</p>
+        </article>
+        <article class="principio principio--3">
+          <p class="principio__num" aria-hidden="true">iii.</p>
+          <h3>Teclado primero</h3>
+          <div>
+            <p class="principio__entrada">Crear, buscar, previsualizar y eliminar tienen su atajo.</p>
+            <p>La lista se recorre con las flechas y Tab nunca te deja atrapado en el editor. El ratón sirve, pero no hace falta.</p>
+          </div>
+          <ul class="atajos" aria-label="Atajos de ejemplo">
+            <li><span><kbd>Alt</kbd> <kbd>N</kbd></span> Nueva nota</li>
+            <li><span><kbd>Ctrl</kbd> <kbd>K</kbd></span> Buscar (Cmd en Mac)</li>
+            <li><span><kbd>Alt</kbd> <kbd>P</kbd></span> Escribir o vista previa</li>
+            <li><span><kbd>Alt</kbd> <kbd>Retroceso</kbd></span> Eliminar desde la lista, con deshacer</li>
+          </ul>
+        </article>
+      </div>
+    </div>
+  </section>
+
+  <section id="planes" class="seccion planes" aria-labelledby="t-planes">
+    <div class="contenedor">
+      <header class="seccion-cab">
+        <p class="eyebrow">Planes</p>
+        <h2 id="t-planes">Dos formas de pagar, tres tamaños de cuaderno.</h2>
+        <p>Todos los planes incluyen escribir en markdown, vista previa y búsqueda instantánea. La diferencia está en el respaldo, los atajos y el trabajo en equipo.</p>
+      </header>
+
+      <div id="planes-app" hidden>
+        <div class="ciclo-fila">
+          <fieldset class="ciclo" role="radiogroup">
+            <legend class="solo-lector">Ciclo de pago</legend>
+            <label class="ciclo__opcion"><input type="radio" name="ciclo" value="mensual" autocomplete="off"><span class="ciclo__texto">Mensual</span></label>
+            <label class="ciclo__opcion"><input type="radio" name="ciclo" value="anual" checked autocomplete="off"><span class="ciclo__texto">Anual</span></label>
+          </fieldset>
+          <p class="ciclo__nota" id="ciclo-nota"></p>
+        </div>
+        <p class="aviso-demo">Demostración: los planes y precios son ficticios y no se realiza ningún cobro.</p>
+        <p class="solo-lector" role="status" id="aviso-ciclo"></p>
+        <div class="planes__rejilla" id="rejilla"></div>
+        <p class="planes__nota">Elegir un plan solo lo guarda como plan de demostración dentro de la app. En esta demostración la app no limita ninguna función según el plan.</p>
+      </div>
+
+      <noscript>
+        <table class="precios-simple">
+          <caption>Precios de los planes en dólares estadounidenses (US$)</caption>
+          <thead><tr><th scope="col">Plan</th><th scope="col">Mensual (cada mes)</th><th scope="col">Anual (cada año)</th></tr></thead>
+          <tbody>
+            <tr><th scope="row"><a href="app.html?plan=semilla&amp;ciclo=anual">Semilla</a></th><td>US$&nbsp;5</td><td>US$&nbsp;50</td></tr>
+            <tr><th scope="row"><a href="app.html?plan=brote&amp;ciclo=anual">Brote</a></th><td>US$&nbsp;9</td><td>US$&nbsp;90</td></tr>
+            <tr><th scope="row"><a href="app.html?plan=bosque&amp;ciclo=anual">Bosque</a></th><td>US$&nbsp;18</td><td>US$&nbsp;180</td></tr>
+          </tbody>
+        </table>
+        <p class="aviso-demo">Demostración: los planes y precios son ficticios y no se realiza ningún cobro.</p>
+        <p class="planes__nota">Bosque incluye funciones que están en preparación y todavía no existen: espacios compartidos para equipos, sincronización entre dispositivos y soporte por correo en 24 h. <a href="#comparativa">Ver qué incluye cada plan</a>.</p>
+      </noscript>
+    </div>
+  </section>
+
+  <section id="comparativa" class="seccion comparativa-secc" aria-labelledby="t-comparativa">
+    <div class="contenedor">
+      <header class="seccion-cab">
+        <p class="eyebrow">Comparativa</p>
+        <h2 id="t-comparativa">Qué incluye cada plan</h2>
+      </header>
+      <table class="comparativa" id="tabla-planes" hidden>
+        <caption>Funciones de Ceiba según el plan</caption>
+        <thead><tr><th scope="col"><span class="solo-lector">Función</span></th></tr></thead>
+        <tbody></tbody>
+      </table>
+      <noscript>
+        <table class="comparativa">
+          <caption>Funciones de Ceiba según el plan</caption>
+          <colgroup><col><col><col><col></colgroup>
+          <thead><tr><th scope="col"><span class="solo-lector">Función</span></th><th scope="col">Semilla</th><th scope="col" class="col-destacada">Brote</th><th scope="col">Bosque</th></tr></thead>
+          <tbody>
+          <tr><th scope="row">Notas guardadas en este navegador</th><td class="si">Sí</td><td class="si col-destacada">Sí</td><td class="si">Sí</td></tr>
+          <tr><th scope="row">Markdown con vista previa</th><td class="si">Sí</td><td class="si col-destacada">Sí</td><td class="si">Sí</td></tr>
+          <tr><th scope="row">Búsqueda instantánea</th><td class="si">Sí</td><td class="si col-destacada">Sí</td><td class="si">Sí</td></tr>
+          <tr><th scope="row">Exportar una nota a .md</th><td class="si">Sí</td><td class="si col-destacada">Sí</td><td class="si">Sí</td></tr>
+          <tr><th scope="row">Copia de seguridad completa en JSON (exportar e importar)</th><td class="no">No</td><td class="si col-destacada">Sí</td><td class="si">Sí</td></tr>
+          <tr><th scope="row">Temas de papel claro y oscuro</th><td class="no">No</td><td class="si col-destacada">Sí</td><td class="si">Sí</td></tr>
+          <tr><th scope="row">Atajos de teclado completos</th><td class="no">No</td><td class="si col-destacada">Sí</td><td class="si">Sí</td></tr>
+          <tr><th scope="row">Espacios compartidos para equipos</th><td class="no">No</td><td class="no col-destacada">No</td><td class="prep">En preparación</td></tr>
+          <tr><th scope="row">Sincronización entre dispositivos</th><td class="no">No</td><td class="no col-destacada">No</td><td class="prep">En preparación</td></tr>
+          <tr><th scope="row">Soporte por correo en 24 h</th><td class="no">No</td><td class="no col-destacada">No</td><td class="prep">En preparación</td></tr>
+          </tbody>
+        </table>
+      </noscript>
+      <p class="comparativa__nota">La tabla describe cómo se repartirían las funciones en una versión comercial. En esta demostración la app no limita ninguna función según el plan elegido. Lo marcado como en preparación todavía no existe.</p>
+    </div>
+  </section>
+
+  <section id="preguntas" class="seccion preguntas" aria-labelledby="t-preguntas">
+    <div class="contenedor preguntas__marco">
+      <header class="seccion-cab">
+        <p class="eyebrow">Preguntas</p>
+        <h2 id="t-preguntas">Lo que suele preguntarse antes de empezar</h2>
+        <svg class="rama rama--pequena" viewBox="0 0 360 190" aria-hidden="true" focusable="false"><path class="tronco" d="M-7.2 169.1C-3.9 168.7 4.7 167.6 12.6 166.4C20.5 165.3 31.1 164 40.4 162.3C49.7 160.6 59.4 158.8 68.3 156.2C77.2 153.7 85 150.3 93.7 146.8C102.4 143.3 111.2 138.7 120.3 135.1C129.5 131.5 138.8 127.6 148.7 125.2C158.6 122.7 169.2 121.5 179.5 120.2C189.8 119 200.7 118.8 210.6 117.5C220.5 116.1 229.9 114.8 238.8 112.2C247.6 109.6 255.6 105.8 263.6 101.9C271.6 98 279.2 93.1 286.7 88.7C294.1 84.3 301.2 79.9 308.4 75.4C315.7 70.9 323.2 66.3 330.3 61.7C337.3 57.1 344.9 51.8 350.7 47.9C356.4 44.1 362.5 40 364.9 38.4"/><path class="tronco" d="M-4.8 182.9C-1.6 182.4 6.6 181 14.5 179.6C22.4 178.3 33.2 176.7 42.7 174.7C52.2 172.8 62.4 170.7 71.7 167.8C81 164.8 89.5 161 98.3 157.2C107.1 153.4 115.7 148.6 124.6 144.9C133.4 141.2 142 137.4 151.3 134.8C160.6 132.3 170.4 131 180.5 129.5C190.6 128.1 201.5 127.7 211.6 126.1C221.8 124.5 232 122.8 241.2 119.8C250.5 116.9 258.9 112.6 267 108.4C275.2 104.1 282.8 99 290.2 94.4C297.6 89.7 304.4 85.3 311.6 80.6C318.7 75.9 326.3 70.9 333.3 66.1C340.2 61.3 347.7 55.8 353.3 51.8C359 47.7 364.8 43.3 367.1 41.6"/><path class="tronco" d="M364.9 38.4L367.1 41.6"/><path class="corteza" d="M5.7 174.2C12.5 173.1 32.9 170.7 46.5 167.6C60.1 164.5 73.9 160.7 87.3 155.8C100.7 150.8 113.2 143 126.9 138.1C140.7 133.2 154.8 129 169.7 126.1C184.6 123.3 201.6 124 216.2 121.1C230.7 118.3 244.5 114.5 257.2 109.2C269.8 103.9 280.9 95.9 292.1 89.2C303.3 82.5 315 75 324.5 68.8C333.9 62.6 344.9 54.8 348.9 52"/><path class="espina" d="M54.4 159.7L60 147.8L64.6 157.2"/><path class="espina" d="M80.3 164.8L91.3 170.5L89.9 161.1"/><path class="espina" d="M111.1 139.1L114.9 127.8L120.4 135"/><path class="espina" d="M155.7 133.5L165 139.7L165.5 131.6"/><path class="espina" d="M200.7 118.5L207.8 111.1L210.4 117.5"/><path class="espina" d="M236.7 121.3L246.5 126.5L245.8 118.3"/><path class="espina" d="M267.4 100L271.5 91.6L275.6 95.3"/><path class="espina" d="M293.6 92.1L303.2 93L301.4 87.1"/><path class="espina" d="M326.5 64.3L329.7 55.6L334 59.2"/><path class="espina" d="M349.7 54.3L359.5 55.2L357 49.2"/><path class="ramita" d="M91.7 153.9Q108.1 111.9 104.9 66.9"/><path class="ramita" d="M221.2 120.4Q233 80.9 262 51.6"/><path class="ramita" d="M310 78Q324 55.3 326.5 28.7"/><path class="pedicelo" d="M160.6 132.6L159.6 146.6"/><path class="vaina" d="M159.6 146.6C146.1 167.7 152.8 190.2 156.6 190.4C160.3 190.7 170 169.3 159.6 146.6Z"/><path class="vaina-linea" d="M159.3 151.8L156.9 186.1"/><use href="#hoja" transform="translate(104.9 66.9) rotate(-4.2) scale(0.9)"/><use href="#hoja" transform="translate(103.5 109.4) rotate(47.9) scale(0.7)"/><use href="#hoja" transform="translate(105.4 84.8) rotate(-64.9) scale(0.7)"/><use href="#hoja" transform="translate(262 51.6) rotate(44.8) scale(0.8)"/><use href="#hoja" transform="translate(238.1 82.1) rotate(97.1) scale(0.7)"/><use href="#hoja" transform="translate(251.1 63.7) rotate(-10.8) scale(0.7)"/><use href="#hoja" transform="translate(326.5 28.7) rotate(5.6) scale(0.7)"/><use href="#hoja" transform="translate(321.4 53.3) rotate(57.5) scale(0.6)"/></svg>
+      </header>
+      <div class="faq">
+        <details>
+          <summary>¿Cómo se cobra?</summary>
+          <div class="faq__resp">
+            <p>En esta demostración no se cobra nada y no se pide ningún dato de pago. El modelo de precios es el que ves: el plan mensual se paga cada mes y el anual se paga una vez al año, con dos meses sin costo.</p>
+          </div>
+        </details>
+        <details>
+          <summary>¿Puedo cancelar cuando quiera?</summary>
+          <div class="faq__resp">
+            <p>Ese es el modelo previsto para el plan mensual. Hoy no hay ninguna suscripción real que cancelar: elegir un plan solo guarda tu preferencia en este navegador.</p>
+          </div>
+        </details>
+        <details>
+          <summary>¿Dónde se guardan mis notas?</summary>
+          <div class="faq__resp">
+            <p>En el almacenamiento local de tu navegador, en este dispositivo. No viajan a ningún servidor ni se sincronizan entre dispositivos.</p>
+            <p>Si borras los datos del sitio o usas una ventana privada, se pierden. Por eso conviene exportar copias.</p>
+          </div>
+        </details>
+        <details>
+          <summary>¿Puedo exportar mis notas?</summary>
+          <div class="faq__resp">
+            <p>Sí. Cada nota se descarga como un archivo <code>.md</code>. La copia de seguridad completa en JSON, para exportar e importar todo el cuaderno, forma parte del plan Brote y del Bosque.</p>
+          </div>
+        </details>
+        <details>
+          <summary>¿Puedo cambiar de plan?</summary>
+          <div class="faq__resp">
+            <p>Sí. Vuelve a esta página, elige otro plan y la app guardará la nueva selección. Como no hay cobro real, el cambio no genera ningún ajuste de importe.</p>
+          </div>
+        </details>
+        <details>
+          <summary>¿Qué es markdown?</summary>
+          <div class="faq__resp">
+            <p>Una forma de dar formato escribiendo texto plano: <code># Título</code> para un encabezado, <code>*cursiva*</code>, <code>**negrita**</code> y un guion para cada elemento de una lista.</p>
+            <p>Ceiba entiende un subconjunto de markdown, no todas sus variantes.</p>
+          </div>
+        </details>
+      </div>
+    </div>
+  </section>
+
+  <section class="cierre" aria-labelledby="t-cierre">
+    <div class="contenedor">
+      <div class="cierre__hoja">
+        <h2 id="t-cierre">Abre una página en blanco.</h2>
+        <p>Entra, crea tu primera nota y empieza a escribir. Tus notas se guardan en este navegador y no hace falta registrarse.</p>
+        <div class="cierre__acciones">
+          <a class="boton boton--primario boton--grande" href="app.html">Abrir la app</a>
+          <a class="boton boton--secundario boton--grande" href="#planes">Ver los planes</a>
+        </div>
+        <svg class="rama rama--cierre" viewBox="0 0 360 190" aria-hidden="true" focusable="false"><path class="tronco" d="M-7.2 169.1C-3.9 168.7 4.7 167.6 12.6 166.4C20.5 165.3 31.1 164 40.4 162.3C49.7 160.6 59.4 158.8 68.3 156.2C77.2 153.7 85 150.3 93.7 146.8C102.4 143.3 111.2 138.7 120.3 135.1C129.5 131.5 138.8 127.6 148.7 125.2C158.6 122.7 169.2 121.5 179.5 120.2C189.8 119 200.7 118.8 210.6 117.5C220.5 116.1 229.9 114.8 238.8 112.2C247.6 109.6 255.6 105.8 263.6 101.9C271.6 98 279.2 93.1 286.7 88.7C294.1 84.3 301.2 79.9 308.4 75.4C315.7 70.9 323.2 66.3 330.3 61.7C337.3 57.1 344.9 51.8 350.7 47.9C356.4 44.1 362.5 40 364.9 38.4"/><path class="tronco" d="M-4.8 182.9C-1.6 182.4 6.6 181 14.5 179.6C22.4 178.3 33.2 176.7 42.7 174.7C52.2 172.8 62.4 170.7 71.7 167.8C81 164.8 89.5 161 98.3 157.2C107.1 153.4 115.7 148.6 124.6 144.9C133.4 141.2 142 137.4 151.3 134.8C160.6 132.3 170.4 131 180.5 129.5C190.6 128.1 201.5 127.7 211.6 126.1C221.8 124.5 232 122.8 241.2 119.8C250.5 116.9 258.9 112.6 267 108.4C275.2 104.1 282.8 99 290.2 94.4C297.6 89.7 304.4 85.3 311.6 80.6C318.7 75.9 326.3 70.9 333.3 66.1C340.2 61.3 347.7 55.8 353.3 51.8C359 47.7 364.8 43.3 367.1 41.6"/><path class="tronco" d="M364.9 38.4L367.1 41.6"/><path class="corteza" d="M5.7 174.2C12.5 173.1 32.9 170.7 46.5 167.6C60.1 164.5 73.9 160.7 87.3 155.8C100.7 150.8 113.2 143 126.9 138.1C140.7 133.2 154.8 129 169.7 126.1C184.6 123.3 201.6 124 216.2 121.1C230.7 118.3 244.5 114.5 257.2 109.2C269.8 103.9 280.9 95.9 292.1 89.2C303.3 82.5 315 75 324.5 68.8C333.9 62.6 344.9 54.8 348.9 52"/><path class="espina" d="M54.4 159.7L60 147.8L64.6 157.2"/><path class="espina" d="M80.3 164.8L91.3 170.5L89.9 161.1"/><path class="espina" d="M111.1 139.1L114.9 127.8L120.4 135"/><path class="espina" d="M155.7 133.5L165 139.7L165.5 131.6"/><path class="espina" d="M200.7 118.5L207.8 111.1L210.4 117.5"/><path class="espina" d="M236.7 121.3L246.5 126.5L245.8 118.3"/><path class="espina" d="M267.4 100L271.5 91.6L275.6 95.3"/><path class="espina" d="M293.6 92.1L303.2 93L301.4 87.1"/><path class="espina" d="M326.5 64.3L329.7 55.6L334 59.2"/><path class="espina" d="M349.7 54.3L359.5 55.2L357 49.2"/><path class="ramita" d="M91.7 153.9Q108.1 111.9 104.9 66.9"/><path class="ramita" d="M221.2 120.4Q233 80.9 262 51.6"/><path class="ramita" d="M310 78Q324 55.3 326.5 28.7"/><path class="pedicelo" d="M160.6 132.6L159.6 146.6"/><path class="vaina" d="M159.6 146.6C146.1 167.7 152.8 190.2 156.6 190.4C160.3 190.7 170 169.3 159.6 146.6Z"/><path class="vaina-linea" d="M159.3 151.8L156.9 186.1"/><use href="#hoja" transform="translate(104.9 66.9) rotate(-4.2) scale(0.9)"/><use href="#hoja" transform="translate(103.5 109.4) rotate(47.9) scale(0.7)"/><use href="#hoja" transform="translate(105.4 84.8) rotate(-64.9) scale(0.7)"/><use href="#hoja" transform="translate(262 51.6) rotate(44.8) scale(0.8)"/><use href="#hoja" transform="translate(238.1 82.1) rotate(97.1) scale(0.7)"/><use href="#hoja" transform="translate(251.1 63.7) rotate(-10.8) scale(0.7)"/><use href="#hoja" transform="translate(326.5 28.7) rotate(5.6) scale(0.7)"/><use href="#hoja" transform="translate(321.4 53.3) rotate(57.5) scale(0.6)"/></svg>
+      </div>
+    </div>
+  </section>
+
+</main>
+
+<footer class="pie">
+  <div class="contenedor pie__marco">
+    <div class="pie__marca"><svg class="rama rama--sello" viewBox="0 0 44 44" aria-hidden="true" focusable="false"><path class="tronco" d="M5 38C13 36 21 30 28 20C31 15 34 11 38 6"/><path class="espina" d="M12 36.5L14.6 40L15.4 35.2M22 29.4L24 33L26.4 28.4M27.4 21L30 24.5L31.5 19.5"/><path class="ramita" d="M17 33C19 28 19 24 17 19"/><use href="#hoja5" transform="translate(17 19) rotate(-14) scale(.36)"/><use href="#hoja5" transform="translate(26 23) rotate(42) scale(.3)"/><use href="#hoja5" transform="translate(37 8) rotate(50) scale(.34)"/></svg><span><strong>Ceiba</strong> cuaderno de notas en markdown</span></div>
+    <p class="aviso-demo">Demostración: los planes y precios son ficticios y no se realiza ningún cobro.</p>
+    <p class="pie__pequeno">Tus notas viven en este navegador: sin cuentas, sin servidor y sin sincronización. Las funciones marcadas como en preparación todavía no existen.</p>
+    <nav aria-label="Pie de página">
+      <a href="#principios">Principios</a>
+      <a href="#planes">Planes</a>
+      <a href="#preguntas">Preguntas</a>
+      <a href="app.html">Abrir la app</a>
+    </nav>
+  </div>
+</footer>
+
+<script>
+(function () {
+  'use strict';
+
+  /* ---------- Fuente única de verdad de los planes (importes en US$, enteros) ---------- */
+  const PLANES = [
+    { id: 'semilla', nombre: 'Semilla', para: 'Quien empieza un cuaderno propio', mensual: 5, anual: 50 },
+    { id: 'brote', nombre: 'Brote', para: 'Quien escribe a diario y quiere respaldo', mensual: 9, anual: 90, destacado: true },
+    { id: 'bosque', nombre: 'Bosque', para: 'Equipos pequeños', mensual: 18, anual: 180 }
+  ];
+  /* Cada función se ofrece "desde" un plan en adelante; prep marca lo que todavía no existe. */
+  const FUNCIONES = [
+    { nombre: 'Notas guardadas en este navegador', desde: 'semilla' },
+    { nombre: 'Markdown con vista previa', desde: 'semilla' },
+    { nombre: 'Búsqueda instantánea', desde: 'semilla' },
+    { nombre: 'Exportar una nota a .md', desde: 'semilla' },
+    { nombre: 'Copia de seguridad completa en JSON (exportar e importar)', desde: 'brote' },
+    { nombre: 'Temas de papel claro y oscuro', desde: 'brote' },
+    { nombre: 'Atajos de teclado completos', desde: 'brote' },
+    { nombre: 'Espacios compartidos para equipos', desde: 'bosque', prep: true },
+    { nombre: 'Sincronización entre dispositivos', desde: 'bosque', prep: true },
+    { nombre: 'Soporte por correo en 24 h', desde: 'bosque', prep: true }
+  ];
+  const MESES = 12;
+  const NBSP = ' ';
+
+  /* ---------- Importes derivados: se calculan, no se escriben ---------- */
+  const ahorro = p => p.mensual * MESES - p.anual;               // exacto, en enteros
+  const equivalenteMensual = p => p.anual / MESES;               // exacto; solo se redondea al mostrar
+  const dos = n => n.toFixed(2).replace('.', ',');               // presentación con coma decimal
+  const entero = n => String(n);
+  const mesesSinCosto = (() => {
+    const v = PLANES.map(p => ahorro(p) / p.mensual);
+    return v.every(x => x === v[0]) ? v[0] : null;
+  })();
+
+  const crear = (tag, clase, texto) => {
+    const e = document.createElement(tag);
+    if (clase) e.className = clase;
+    if (texto != null) e.textContent = texto;
+    return e;
+  };
+  const posicion = id => PLANES.findIndex(p => p.id === id);
+
+  /* ---------- Tarjetas ---------- */
+  const rejilla = document.getElementById('rejilla');
+  const vivas = {};
+
+  PLANES.forEach((p, i) => {
+    const art = crear('article', 'plan' + (p.destacado ? ' plan--destacado' : ''));
+    art.setAttribute('data-plan', p.id);
+    art.setAttribute('aria-labelledby', 'plan-' + p.id);
+    if (p.destacado) art.appendChild(crear('p', 'plan__etiqueta', 'La más elegida'));
+
+    const cab = crear('div', 'plan__cab');
+    const h3 = crear('h3', 'plan__nombre', p.nombre); h3.id = 'plan-' + p.id;
+    cab.append(h3, crear('p', 'plan__para', p.para));
+
+    const precio = crear('div', 'plan__precio');
+    const importe = crear('p', 'plan__importe');
+    const cifra = crear('span', 'cifra');
+    importe.append(crear('span', 'moneda', 'US$'), NBSP, cifra, ' ', crear('span', 'unidad', 'al mes'));
+    const detalle = crear('p', 'plan__detalle');
+    const ahorroEl = crear('p', 'plan__ahorro');
+    precio.append(importe, detalle, ahorroEl);
+
+    const fun = crear('div', 'plan__fun');
+    const lista = crear('ul', 'plan__lista');
+    if (i > 0) lista.appendChild(crear('li', null, 'Todo lo de ' + PLANES[i - 1].nombre));
+    FUNCIONES.filter(f => f.desde === p.id && !f.prep).forEach(f => lista.appendChild(crear('li', null, f.nombre)));
+    fun.appendChild(lista);
+    const pendientes = FUNCIONES.filter(f => f.desde === p.id && f.prep);
+    if (pendientes.length) {
+      const prep = crear('div', 'plan__prep');
+      prep.appendChild(crear('p', 'plan__prep-titulo', 'En preparación'));
+      const l2 = crear('ul', 'plan__lista');
+      pendientes.forEach(f => l2.appendChild(crear('li', null, f.nombre)));
+      prep.appendChild(l2);
+      fun.appendChild(prep);
+    }
+
+    const cta = crear('a', 'boton plan__cta ' + (p.destacado ? 'boton--primario' : 'boton--secundario'), 'Elegir ' + p.nombre);
+    art.append(cab, precio, fun, cta);
+    rejilla.appendChild(art);
+    vivas[p.id] = { cifra, detalle, ahorro: ahorroEl, cta };
+  });
+
+  function aplicarCiclo(ciclo, anunciar) {
+    PLANES.forEach(p => {
+      const v = vivas[p.id];
+      if (ciclo === 'anual') {
+        v.cifra.textContent = dos(equivalenteMensual(p));
+        v.detalle.textContent = 'US$' + NBSP + entero(p.anual) + ' cobrados una vez al año';
+        v.ahorro.textContent = 'Ahorras US$' + NBSP + entero(ahorro(p)) + ' frente a pagar ' + MESES + ' meses';
+        v.ahorro.hidden = false;
+      } else {
+        v.cifra.textContent = entero(p.mensual);
+        v.detalle.textContent = 'Cancela cuando quieras';
+        v.ahorro.textContent = '';
+        v.ahorro.hidden = true;
+      }
+      v.cta.setAttribute('href', 'app.html?plan=' + p.id + '&ciclo=' + ciclo);
+    });
+    if (anunciar) {
+      document.getElementById('aviso-ciclo').textContent = ciclo === 'anual'
+        ? 'Mostrando precios anuales: se paga una vez al año.'
+        : 'Mostrando precios mensuales: se paga cada mes.';
+    }
+  }
+
+  const nota = document.getElementById('ciclo-nota');
+  if (mesesSinCosto) nota.textContent = 'El plan anual equivale a ' + mesesSinCosto + ' meses sin costo.'; else nota.hidden = true;
+
+  const radios = document.querySelectorAll('input[name="ciclo"]');
+  radios.forEach(r => r.addEventListener('change', () => { if (r.checked) aplicarCiclo(r.value, true); }));
+  const marcado = document.querySelector('input[name="ciclo"]:checked');
+  aplicarCiclo(marcado ? marcado.value : 'anual', false);
+  document.getElementById('planes-app').hidden = false;
+
+  /* ---------- Tabla comparativa (misma fuente) ---------- */
+  const tabla = document.getElementById('tabla-planes');
+  const filaCab = tabla.querySelector('thead tr');
+  const cuerpo = tabla.querySelector('tbody');
+  const colgrupo = crear('colgroup');
+  colgrupo.appendChild(crear('col'));
+  PLANES.forEach(p => {
+    const th = crear('th', p.destacado ? 'col-destacada' : null, p.nombre);
+    th.setAttribute('scope', 'col');
+    filaCab.appendChild(th);
+    colgrupo.appendChild(crear('col'));
+  });
+  tabla.insertBefore(colgrupo, tabla.querySelector('thead'));
+  FUNCIONES.forEach(f => {
+    const tr = crear('tr');
+    const th = crear('th', null, f.nombre);
+    th.setAttribute('scope', 'row');
+    tr.appendChild(th);
+    PLANES.forEach(p => {
+      const incluido = posicion(p.id) >= posicion(f.desde);
+      const estado = !incluido ? 'no' : f.prep ? 'prep' : 'si';
+      const td = crear('td', estado + (p.destacado ? ' col-destacada' : ''), estado === 'si' ? 'Sí' : estado === 'no' ? 'No' : 'En preparación');
+      tr.appendChild(td);
+    });
+    cuerpo.appendChild(tr);
+  });
+  tabla.hidden = false;                      // sin JavaScript la tabla queda oculta y el <noscript> de arriba muestra la misma, ya escrita
+
+  /* ---------- Tema claro/oscuro (comparte ceiba:prefs:v1 con la app) ---------- */
+  const CLAVE = 'ceiba:prefs:v1';
+  const raiz = document.documentElement;
+  const boton = document.getElementById('tema');
+  const sistema = window.matchMedia('(prefers-color-scheme: dark)');
+  const esOscuro = () => raiz.hasAttribute('data-theme') ? raiz.getAttribute('data-theme') === 'dark' : sistema.matches;
+  const sincronizar = () => boton.setAttribute('aria-pressed', String(esOscuro()));
+  function leerPrefs() {
+    try {
+      const v = JSON.parse(localStorage.getItem(CLAVE));
+      return v && typeof v === 'object' && !Array.isArray(v) ? v : {};
+    } catch (e) { return {}; }
+  }
+  function guardarTema(tema) {
+    try { const p = leerPrefs(); p.tema = tema; localStorage.setItem(CLAVE, JSON.stringify(p)); } catch (e) { /* sin almacenamiento: el cambio vale solo en esta sesión */ }
+  }
+  boton.addEventListener('click', () => {
+    const oscuro = !esOscuro();
+    raiz.setAttribute('data-theme', oscuro ? 'dark' : 'light');
+    sincronizar();
+    guardarTema(oscuro ? 'oscuro' : 'claro');
+  });
+  if (sistema.addEventListener) sistema.addEventListener('change', sincronizar);
+  sincronizar();
+  boton.hidden = false;
+})();
+</script>
+</body>
+</html>

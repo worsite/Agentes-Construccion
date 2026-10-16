@@ -1,0 +1,3257 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data:; base-uri 'none'; form-action 'self'">
+<title>Ceiba</title>
+<meta name="description" content="Ceiba: cuaderno de notas en markdown. Lista de notas, edición sin distracciones, búsqueda instantánea y guardado automático en este navegador.">
+<meta name="color-scheme" content="light dark">
+<meta name="theme-color" content="#FBF6EA" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#1B1915" media="(prefers-color-scheme: dark)">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='9' fill='%23FBF6EA'/%3E%3Cg fill='none' stroke='%234B5A35' stroke-width='1.8' stroke-linecap='round'%3E%3Cpath d='M16 26V14'/%3E%3Cpath d='M16 14C12 12 8.500 9 7 6C11 6.500 14.500 9 16 14ZM16 14C20 12 23.500 9 25 6C21 6.500 17.500 9 16 14Z'/%3E%3Cpath d='M16 14C16 11 16 8.500 16 5'/%3E%3C/g%3E%3C/svg%3E">
+<script>
+/* Aplica el tema guardado antes del primer pintado para evitar un parpadeo. Clave compartida con la landing. */
+(function () {
+  try {
+    var p = JSON.parse(localStorage.getItem('ceiba:prefs:v1'));
+    var t = p && typeof p === 'object' ? p.tema : null;
+    if (t === 'claro' || t === 'light') document.documentElement.setAttribute('data-theme', 'light');
+    else if (t === 'oscuro' || t === 'dark') document.documentElement.setAttribute('data-theme', 'dark');
+    /* Modo enfoque: también antes del primer pintado, para que la barra lateral no parpadee. */
+    if (p && typeof p === 'object' && p.foco === true) document.documentElement.setAttribute('data-enfoque', 'si');
+  } catch (e) { /* sin almacenamiento o JSON roto: se sigue al sistema */ }
+})();
+</script>
+<style>
+/* ==========================================================================
+   Ceiba: aplicación. Tokens y dirección visual de la spec (sección 3), claro y oscuro.
+   ========================================================================== */
+
+/* ---------- Tokens ---------- */
+:root {
+  --papel: #FBF6EA;
+  --hoja: #FFFDF7;
+  --tinta: #2B2620;
+  --tinta-suave: #5E554A;
+  --linea: #E3D9C4;
+  --musgo: #4B5A35;
+  --musgo-oscuro: #3A4728;
+  --terracota: #9C4A27;
+  --arcilla: #E7C9A5;
+  --peligro: #A3281E;
+  --foco: #1F5FBF;
+  --sobre-musgo: #FFFFFF;
+  --grano: .06;
+  --serif: "Iowan Old Style", "Palatino Linotype", Palatino, "Book Antiqua", Georgia, serif;
+  --sans: "Avenir Next", "Segoe UI", system-ui, -apple-system, sans-serif;
+  --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  --e1: 4px; --e2: 8px; --e3: 12px; --e4: 16px; --e5: 24px; --e6: 32px; --e7: 48px; --e8: 72px;
+  --columna: 36rem;                       /* medida de lectura del editor: unas 66 letras por línea */
+  --ancho-lateral: clamp(280px, 26vw, 340px);
+  --vv-tapado: 0px;                       /* alto que cubre el teclado virtual (lo fija el script) */
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --papel: #1B1915; --hoja: #24211C; --tinta: #EEE6D4; --tinta-suave: #B9AE9B; --linea: #3A352C;
+    --musgo: #A9BC87; --musgo-oscuro: #BFD0A0; --terracota: #E5987A; --arcilla: #5A4631;
+    --peligro: #F08A7E; --foco: #8DB8FF; --sobre-musgo: #1B1915; --grano: .09;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --papel: #1B1915; --hoja: #24211C; --tinta: #EEE6D4; --tinta-suave: #B9AE9B; --linea: #3A352C;
+  --musgo: #A9BC87; --musgo-oscuro: #BFD0A0; --terracota: #E5987A; --arcilla: #5A4631;
+  --peligro: #F08A7E; --foco: #8DB8FF; --sobre-musgo: #1B1915; --grano: .09;
+  color-scheme: dark;
+}
+
+/* ---------- Base ---------- */
+*, *::before, *::after { box-sizing: border-box; }
+html { height: 100%; -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
+body {
+  margin: 0; height: 100%; overflow: hidden;
+  background: var(--papel); color: var(--tinta);
+  font: 400 1rem/1.5 var(--sans);
+  -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility;
+}
+/* Grano de papel: estático, muy tenue, debajo del contenido. */
+body::before {
+  content: ""; position: fixed; inset: 0; z-index: -1; pointer-events: none; opacity: var(--grano);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='240' height='240'%3E%3Cfilter id='g' x='0' y='0' width='100%25' height='100%25'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.8' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 .32 0 0 0 0 .25 0 0 0 0 .17 1.4 0 0 0 -.3'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23g)'/%3E%3C/svg%3E");
+}
+:root[data-theme="dark"] body::before { filter: invert(1); }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) body::before { filter: invert(1); } }
+
+[hidden] { display: none !important; }
+img, svg { max-width: 100%; }
+button, input, textarea { font: inherit; color: inherit; }
+h1, h2, p { margin: 0; }
+::selection { background: var(--arcilla); color: var(--tinta); }
+:focus-visible { outline: 2px solid transparent; outline-offset: 2px; box-shadow: 0 0 0 2px var(--papel), 0 0 0 4px var(--foco); border-radius: 6px; }
+.solo-lector { position: absolute !important; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip: rect(0 0 0 0); clip-path: inset(50%); white-space: nowrap; border: 0; }
+.salto { position: absolute; left: 16px; top: -120px; z-index: 40; display: inline-flex; align-items: center; min-height: 44px; padding: 0 20px; background: var(--musgo); color: var(--sobre-musgo); font: 600 1rem/1 var(--sans); border-radius: 0 0 14px 14px; text-decoration: none; }
+.salto:focus-visible { top: 0; }
+.defs-svg { position: absolute; width: 0; height: 0; overflow: hidden; }
+
+/* ---------- Botones e iconos ---------- */
+.icono { width: 20px; height: 20px; flex: none; fill: none; stroke: currentColor; stroke-width: 1.75; stroke-linecap: round; stroke-linejoin: round; }
+.boton { display: inline-flex; align-items: center; justify-content: center; gap: var(--e2); min-height: 44px; padding: 0 22px; border: 1.5px solid transparent; border-radius: 26px 18px 24px 20px; font: 600 1rem/1.2 var(--sans); text-decoration: none; cursor: pointer; text-align: center; transition: background-color .18s ease, color .18s ease, border-color .18s ease, transform .18s ease; }
+.boton:active { transform: translateY(1px); }
+.boton--primario { background: var(--musgo); color: var(--sobre-musgo); border-color: var(--musgo); }
+.boton--primario:hover { background: var(--musgo-oscuro); border-color: var(--musgo-oscuro); }
+.boton--secundario { background: transparent; color: var(--tinta); border-color: var(--tinta); }
+.boton--secundario:hover { background: var(--hoja); }
+.boton--compacto { flex: none; padding: 0 16px 0 12px; font-size: .9375rem; white-space: nowrap; }
+.boton-icono { display: inline-flex; align-items: center; justify-content: center; width: 44px; height: 44px; padding: 0; border: 0; border-radius: 14px 10px 14px 10px; background: transparent; color: var(--tinta-suave); cursor: pointer; transition: background-color .15s ease, color .15s ease; }
+.boton-icono:hover { background: var(--linea); color: var(--tinta); }
+.boton-texto { display: inline-flex; align-items: center; justify-content: center; gap: var(--e1); min-width: 44px; min-height: 44px; padding: 0 var(--e3) 0 var(--e2); border: 0; border-radius: 14px 10px 14px 10px; background: transparent; color: var(--tinta); font: 600 .9375rem/1 var(--sans); cursor: pointer; transition: background-color .15s ease; }
+.boton-texto:hover { background: var(--linea); }
+
+/* ---------- Estructura general ---------- */
+.app { display: grid; grid-template-columns: var(--ancho-lateral) minmax(0, 1fr); grid-template-rows: minmax(0, 1fr) auto; height: 100vh; height: 100dvh; }
+
+/* ---------- Barra lateral ---------- */
+.lateral { display: flex; flex-direction: column; min-width: 0; min-height: 0; border-right: 1px solid var(--linea); }
+.lateral__cab { display: flex; align-items: center; justify-content: space-between; gap: var(--e3); padding: var(--e4) var(--e4) var(--e3); }
+.marca { display: inline-flex; align-items: center; gap: 2px; min-width: 0; font: 700 1.375rem/1 var(--serif); letter-spacing: -.01em; }
+.marca svg.rama { width: 34px; height: 34px; flex: none; }
+
+.busqueda { padding: 0 var(--e4) var(--e2); }
+.busqueda__campo { position: relative; }
+.busqueda__lupa { position: absolute; left: 14px; top: 50%; translate: 0 -50%; width: 18px; height: 18px; color: var(--tinta-suave); pointer-events: none; }
+.busqueda__entrada { display: block; width: 100%; min-height: 44px; margin: 0; padding: 0 46px 0 42px; border: 1.5px solid var(--linea); border-radius: 22px 16px 20px 18px; background: var(--hoja); color: var(--tinta); font: 400 1rem/1.2 var(--sans); -webkit-appearance: none; appearance: none; transition: border-color .15s ease; }
+.busqueda__entrada:hover { border-color: var(--tinta-suave); }
+.busqueda__entrada::placeholder { color: var(--tinta-suave); opacity: 1; }
+.busqueda__entrada::-webkit-search-cancel-button, .busqueda__entrada::-webkit-search-decoration { -webkit-appearance: none; appearance: none; display: none; }
+.busqueda__limpiar { position: absolute; right: 2px; top: 0; }
+.busqueda__cuenta { margin: var(--e2) var(--e1) 0; min-height: 1.3em; font: .8125rem/1.3 var(--sans); color: var(--tinta-suave); }
+
+.lista-nav { flex: 1 1 auto; min-height: 0; overflow-x: hidden; overflow-y: auto; padding: var(--e1) var(--e3) var(--e5); overscroll-behavior: contain; }
+.lista { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; border-radius: 14px; }
+.lista:focus-visible { border-radius: 14px; }
+.nota { display: grid; gap: 2px; min-width: 0; padding: 10px 12px 10px 14px; border: 1px solid transparent; border-radius: 16px 10px 14px 10px; cursor: pointer; content-visibility: auto; contain-intrinsic-size: auto 68px; transition: background-color .15s ease, border-color .15s ease; }
+.nota:hover { background: var(--hoja); border-color: var(--linea); }
+.nota[aria-selected="true"] { background: var(--hoja); border-color: var(--linea); box-shadow: inset 3px 0 0 var(--musgo); }
+.nota__fila { display: flex; align-items: baseline; justify-content: space-between; gap: var(--e3); min-width: 0; }
+.nota__titulo { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: 600 1rem/1.35 var(--serif); color: var(--tinta); }
+.nota__titulo--vacio { font-weight: 400; font-style: italic; color: var(--tinta-suave); }
+.nota__tiempo { flex: none; white-space: nowrap; font: .8125rem/1.35 var(--sans); color: var(--tinta-suave); }
+.nota__extracto { display: block; min-width: 0; min-height: 1.4em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: .875rem/1.4 var(--sans); color: var(--tinta-suave); }
+mark { padding: 0 1px; margin: 0 -1px; border-radius: 3px; background: var(--arcilla); color: var(--tinta); }
+
+.sin-resultados { display: grid; justify-items: start; gap: var(--e3); padding: var(--e5) var(--e3); }
+.sin-resultados__titulo { max-width: 100%; font: 700 1.125rem/1.3 var(--serif); overflow-wrap: anywhere; }
+.sin-resultados__ayuda { font: .9375rem/1.5 var(--sans); color: var(--tinta-suave); }
+.lista-vacia { padding: var(--e5) var(--e3); font: .9375rem/1.5 var(--sans); color: var(--tinta-suave); }
+.lateral__pie { display: flex; flex-direction: column; gap: var(--e1); padding: var(--e2) var(--e3); border-top: 1px solid var(--linea); }
+.pie__botones { display: flex; flex-wrap: wrap; align-items: center; gap: 0 var(--e1); }
+.pie__botones .boton-texto { padding: 0 var(--e2) 0 6px; }
+.plan { margin: 0; padding: var(--e1) var(--e2) 0; font: .8125rem/1.4 var(--sans); color: var(--tinta-suave); }
+.plan__nombre { display: block; font-weight: 600; color: var(--tinta); }
+
+/* ---------- Panel principal ---------- */
+.principal { position: relative; display: flex; flex-direction: column; min-width: 0; min-height: 0; background: var(--hoja); }
+.principal:focus { outline: none; }
+.principal__barra { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--e1) var(--e2); padding: var(--e1) var(--e3); border-bottom: 1px solid var(--linea); background: var(--hoja); }
+.barra__acciones { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: var(--e1); margin-left: auto; }
+.boton-volver { display: none; }
+.boton-lateral { display: none; }                      /* solo entre 600 y 899 px: ahí la barra lateral se puede ocultar */
+.boton-texto--peligro { color: var(--peligro); }
+.boton-texto[aria-pressed="true"] { background: var(--linea); box-shadow: inset 0 -2px 0 var(--musgo); }
+.boton-texto[aria-pressed="true"]:focus-visible { box-shadow: inset 0 -2px 0 var(--musgo), 0 0 0 2px var(--papel), 0 0 0 4px var(--foco); }   /* la barra del estado pulsado no se come el anillo de foco */
+.lienzo { position: relative; flex: 1 1 auto; display: flex; min-height: 0; }
+.editor { flex: 1 1 auto; display: block; width: 100%; min-height: 0; margin: 0; padding: clamp(24px, 6vh, 64px) max(var(--e5), calc((100% - var(--columna)) / 2)) var(--e6); border: 0; border-radius: 0; resize: none; background: transparent; color: var(--tinta); caret-color: var(--terracota); font: 400 1.125rem/1.7 var(--serif); tab-size: 4; overflow-wrap: break-word; }
+.editor::placeholder { color: var(--tinta-suave); opacity: 1; }
+.editor:focus-visible { outline: 2px solid var(--foco); outline-offset: -4px; box-shadow: none; border-radius: 14px; }
+
+/* ---------- Vista previa (markdown renderizado por Ceiba.renderMarkdown) ---------- */
+.vista { flex: 1 1 auto; min-width: 0; min-height: 0; margin: 0; padding: clamp(24px, 6vh, 64px) max(var(--e5), calc((100% - var(--columna)) / 2)) var(--e6); overflow-x: hidden; overflow-y: auto; overscroll-behavior: contain; color: var(--tinta); font: 400 1.125rem/1.7 var(--serif); overflow-wrap: anywhere; }
+.vista:focus-visible { outline: 2px solid var(--foco); outline-offset: -4px; box-shadow: none; border-radius: 14px; }
+.vista__vacia { color: var(--tinta-suave); font-style: italic; }
+.md > :first-child { margin-top: 0; }
+.md > :last-child { margin-bottom: 0; }
+.md h1, .md h2, .md h3, .md h4, .md h5, .md h6 { margin: 1.5em 0 .5em; font: 700 1.25rem/1.25 var(--serif); letter-spacing: -.01em; text-wrap: balance; }
+.md h1 { font-size: 2rem; letter-spacing: -.02em; }
+.md h2 { font-size: 1.5rem; }
+.md h4, .md h5, .md h6 { font-size: 1.0625rem; }
+.md h6 { color: var(--tinta-suave); }
+.md p { margin: 0 0 1em; }
+.md ul, .md ol { margin: 0 0 1em; padding-left: 1.5em; }
+.md li { margin: .15em 0; }
+.md li > ul, .md li > ol { margin: .15em 0 0; }
+/* La casilla cuelga en el margen de la lista (donde iría la viñeta): el elemento no se desplaza, así cada nivel conserva su sangría y las líneas envueltas se alinean con el texto. */
+.md li.tarea { list-style: none; position: relative; }
+.md li.tarea > input { position: absolute; left: -1.5em; top: .35em; width: 1em; height: 1em; margin: 0; accent-color: var(--musgo); }
+.md blockquote { margin: 0 0 1em; padding: .1em 0 .1em 1em; border-left: 3px solid var(--arcilla); color: var(--tinta-suave); }
+.md code { padding: .1em .35em; border-radius: 5px; background: var(--papel); font: .9em/1.4 var(--mono); }
+.md pre { margin: 0 0 1em; padding: 12px 16px; overflow-x: auto; border: 1px solid var(--linea); border-radius: 16px 10px 14px 10px; background: var(--papel); font: .9375rem/1.55 var(--mono); tab-size: 4; overflow-wrap: normal; }
+.md pre code { padding: 0; background: none; font: inherit; white-space: pre; }
+.md hr { margin: 1.6em 0; border: 0; border-top: 1px solid var(--linea); }
+.md a { color: var(--terracota); text-decoration: underline; text-decoration-thickness: 1px; text-underline-offset: .18em; }
+.md a:hover { text-decoration-thickness: 2px; }
+.md del { color: var(--tinta-suave); }
+.md .tabla { margin: 0 0 1em; overflow-x: auto; }
+.md table { min-width: 100%; border-collapse: collapse; font: .9375rem/1.45 var(--sans); overflow-wrap: normal; }
+.md th, .md td { padding: 8px 12px; border: 1px solid var(--linea); text-align: left; vertical-align: top; }
+.md th { background: var(--papel); font-weight: 600; }
+.md pre:focus-visible, .md .tabla:focus-visible { outline: 2px solid var(--foco); outline-offset: 2px; box-shadow: none; }
+.md .md__recorte { margin: 1.5em 0 0; padding: 12px 16px; border: 1.5px dashed var(--linea); border-radius: 16px 10px 14px 10px; font: italic .9375rem/1.5 var(--sans); color: var(--tinta-suave); }
+
+.estado { display: flex; flex-wrap: wrap; align-items: center; gap: 2px var(--e5); padding: 10px max(var(--e5), calc((100% - var(--columna)) / 2)); border-top: 1px solid var(--linea); font: .8125rem/1.4 var(--sans); color: var(--tinta-suave); }
+.estado__guardado { display: inline-flex; align-items: center; gap: 6px; color: var(--tinta); font-weight: 600; }
+.estado__guardado::before { content: ""; width: 8px; height: 8px; border-radius: 50% 40% 55% 45%; background: var(--musgo); }
+.estado__guardado[data-estado="guardando"]::before { background: transparent; border: 1.5px solid var(--terracota); }
+.estado__guardado[data-estado="sin-guardar"] { color: var(--peligro); }
+.estado__guardado[data-estado="sin-guardar"]::before { background: var(--peligro); }
+.estado { position: relative; }
+.estado__enfoque { position: absolute; right: var(--e3); top: 50%; translate: 0 -50%; min-height: 44px; padding: 0 12px; border: 0; border-radius: 14px 10px 14px 10px; background: transparent; color: var(--tinta-suave); font: 600 .8125rem/1.2 var(--sans); white-space: nowrap; cursor: pointer; transition: background-color .15s ease, color .15s ease; }
+.estado__enfoque:hover, .estado__enfoque[aria-pressed="true"] { background: var(--linea); color: var(--tinta); }
+
+/* ---------- Estado vacío ---------- */
+.vacio { flex: 1 1 auto; display: grid; align-content: center; justify-items: center; gap: var(--e4); padding: var(--e6) var(--e5); text-align: center; overflow: auto; }
+.vacio svg.rama { width: min(380px, 84%); height: auto; margin-bottom: var(--e2); }
+.vacio__titulo { font: 700 1.75rem/1.15 var(--serif); letter-spacing: -.01em; text-wrap: balance; }
+.vacio__texto { max-width: 36ch; font: 1.0625rem/1.55 var(--serif); color: var(--tinta-suave); text-wrap: balance; }
+
+/* ---------- Rama de ceiba (SVG lineal, mismo trazo que la landing) ---------- */
+svg.rama { overflow: visible; fill: none; stroke: var(--musgo); stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; display: block; }
+svg.rama path { vector-effect: non-scaling-stroke; }
+.tronco, .espina, .ramita, .pedicelo { stroke: var(--terracota); }
+.corteza { stroke: var(--terracota); stroke-opacity: .45; stroke-dasharray: 2 7; }
+.espina { fill: var(--terracota); fill-opacity: .18; }
+.vaina { stroke: var(--terracota); fill: var(--arcilla); fill-opacity: .55; }
+.vaina-linea { stroke: var(--terracota); stroke-opacity: .6; }
+svg.rama use { stroke: var(--musgo); fill: var(--musgo); fill-opacity: .1; }
+
+/* ---------- Avisos ---------- */
+/* Los avisos que describen un estado (almacenamiento, otra pestaña, datos dañados) van en una banda dentro del diseño, bajo las dos columnas:
+   no tapan la lista ni lo que se escribe, y su botón de cerrar nunca queda fuera de la pantalla. Los pasajeros (deshacer, descargas) flotan. */
+.avisos { grid-column: 1 / -1; grid-row: 2; min-width: 0; }
+.avisos__banda { max-height: 40vh; max-height: 40dvh; overflow-y: auto; border-top: 1.5px solid var(--linea); background: var(--hoja); }
+.avisos__banda:empty { display: none; }
+.avisos__banda .aviso { border-width: 0 0 0 6px; border-radius: 0; animation: none; }
+.avisos__flotantes { position: fixed; left: 50%; bottom: calc(56px + var(--vv-tapado)); z-index: 30; translate: -50% 0; display: grid; gap: var(--e2); width: min(560px, calc(100% - 32px)); pointer-events: none; }
+.aviso { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 0 var(--e3); padding: 6px 4px 6px 16px; border: 1.5px solid var(--linea); border-left: 6px solid var(--terracota); border-radius: 18px 12px 16px 12px; background: var(--hoja); color: var(--tinta); font: .9375rem/1.45 var(--sans); pointer-events: auto; animation: fundido .2s ease-out; }
+.aviso--error { border-left-color: var(--peligro); }
+.aviso__texto { flex: 1 1 14rem; min-width: 0; padding: 9px 0; overflow-wrap: anywhere; }   /* con poco ancho, la acción y el cierre bajan a otra fila en vez de ahogar el texto */
+.aviso .boton-icono { flex: none; margin-left: auto; }
+.aviso__accion + .boton-icono { margin-left: 0; }
+.aviso__accion { flex: none; align-self: center; margin-left: auto; min-height: 44px; padding: 0 14px; border: 0; border-radius: 14px 10px 14px 10px; background: transparent; color: var(--musgo); font: 700 .9375rem/1 var(--sans); text-decoration: underline; text-underline-offset: 3px; cursor: pointer; transition: background-color .15s ease; }
+.aviso__accion:hover { background: var(--linea); }
+@keyframes fundido { from { opacity: 0; } to { opacity: 1; } }
+
+@media (min-width: 600px) {
+  /* Centrados sobre el panel principal, sin salirse de él (a 768 px el panel mide 488 px) y por encima de la barra de estado, que puede ocupar tres líneas. */
+  .avisos__flotantes { left: calc(var(--ancho-lateral) + (100% - var(--ancho-lateral)) / 2); bottom: calc(80px + var(--vv-tapado)); width: min(560px, calc(100% - var(--ancho-lateral) - 32px)); }
+}
+
+/* ---------- Diálogo de atajos ---------- */
+.ayuda { width: min(640px, calc(100vw - 24px)); max-width: none; padding: 0; overflow: hidden; border: 1.5px solid var(--linea); border-radius: 28px 20px 26px 22px; background: var(--hoja); color: var(--tinta); }
+.ayuda::backdrop { background: rgba(27, 25, 21, .62); }
+.ayuda__caja { display: flex; flex-direction: column; max-height: calc(100vh - 27px); max-height: calc(var(--vv-alto, 100dvh) - 27px); }
+.ayuda__cab { flex: none; padding: var(--e5) var(--e5) var(--e2); }
+.ayuda__titulo { margin: 0; font: 700 1.5rem/1.2 var(--serif); letter-spacing: -.01em; }
+.ayuda__cuerpo { flex: 1 1 auto; min-height: 0; padding: 0 var(--e5) var(--e3); overflow-y: auto; overscroll-behavior: contain; }
+.ayuda__cuerpo:focus-visible { outline: 2px solid var(--foco); outline-offset: -4px; box-shadow: none; border-radius: 14px; }
+.ayuda__nota { margin: 0 0 var(--e2); font: .9375rem/1.5 var(--sans); color: var(--tinta-suave); }
+.ayuda__grupo { margin: var(--e5) 0 0; font: 700 1.0625rem/1.3 var(--serif); }
+.ayuda dl { margin: var(--e1) 0 0; }
+.atajo { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: baseline; gap: 2px var(--e4); padding: 10px 0; border-bottom: 1px solid var(--linea); }
+.atajo dt { font: 400 1rem/1.4 var(--sans); }
+.atajo dt small { display: block; margin-top: 2px; font: .875rem/1.4 var(--sans); color: var(--tinta-suave); }
+.atajo dd { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 4px; margin: 0; font: .9375rem/1.4 var(--sans); color: var(--tinta-suave); }
+kbd { display: inline-block; min-width: 1.7em; padding: 3px 7px 2px; border: 1px solid var(--tinta-suave); border-bottom-width: 2px; border-radius: 7px 5px 7px 5px; background: var(--papel); color: var(--tinta); font: 600 .8125rem/1.2 var(--sans); text-align: center; white-space: nowrap; }
+.ayuda__pie { flex: none; display: flex; justify-content: flex-end; padding: var(--e3) var(--e5) var(--e5); border-top: 1px solid var(--linea); }
+@media (max-width: 479px) {
+  .ayuda__cab { padding: var(--e4) var(--e4) var(--e2); }
+  .ayuda__cuerpo { padding: 0 var(--e4) var(--e2); }
+  .ayuda__pie { padding: var(--e2) var(--e4) var(--e4); }
+  .atajo { grid-template-columns: minmax(0, 1fr); }
+  .atajo dd { justify-content: flex-start; }
+}
+
+/* ---------- Copia de seguridad ---------- */
+.ayuda__cuerpo.respaldo__cuerpo { display: grid; gap: var(--e4); align-content: start; }
+.respaldo__accion { display: grid; justify-items: start; gap: var(--e2); }
+.respaldo__accion p { margin: 0; max-width: 60ch; font: .9375rem/1.5 var(--sans); color: var(--tinta-suave); }
+.respaldo__error { margin: 0; padding: 10px 14px; border: 1.5px solid var(--linea); border-left: 6px solid var(--peligro); border-radius: 14px 10px 12px 10px; background: var(--papel); color: var(--tinta); font: .9375rem/1.5 var(--sans); overflow-wrap: anywhere; }
+
+/* ---------- Rótulos que se pliegan a solo icono cuando falta sitio (el nombre accesible no cambia) ---------- */
+@media (max-width: 759px) {
+  .rotulo { position: absolute !important; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip: rect(0 0 0 0); clip-path: inset(50%); white-space: nowrap; border: 0; }
+}
+
+/* ---------- Teclado virtual: el script mide window.visualViewport y publica --vv-alto, --vv-arriba y --vv-tapado ---------- */
+:root[data-teclado] .app { position: fixed; left: 0; right: 0; top: var(--vv-arriba, 0px); height: var(--vv-alto); }
+:root[data-teclado] .ayuda { top: var(--vv-arriba, 0px); bottom: auto; margin-top: 12px; margin-bottom: 0; }
+
+/* ---------- Modo enfoque (desde 600 px): sin barra lateral ni barra superior hasta pedirlas ---------- */
+:root[data-enfoque="si"] .estado { opacity: .85; border-top-color: transparent; transition: opacity .18s ease; }
+:root[data-enfoque="si"] .estado:hover, :root[data-enfoque="si"] .estado:focus-within { opacity: 1; }
+@media (min-width: 600px) {
+  .estado { padding-right: max(var(--e5), calc((100% - var(--columna)) / 2), 152px); }   /* deja sitio al botón Modo enfoque, que va pegado al borde */
+  :root[data-enfoque="si"] .app { grid-template-columns: minmax(0, 1fr); }
+  :root[data-enfoque="si"] .lateral { position: fixed; top: 0; bottom: 0; left: 0; z-index: 20; width: var(--ancho-lateral); background: var(--papel); visibility: hidden; opacity: 0; transform: translateX(-12px); transition: opacity .18s ease, transform .18s ease, visibility 0s linear .18s; }
+  :root[data-enfoque="si"] .principal__barra { position: absolute; top: 0; left: 0; right: 0; z-index: 15; visibility: hidden; opacity: 0; transform: translateY(-8px); transition: opacity .18s ease, transform .18s ease, visibility 0s linear .18s; }
+  :root[data-enfoque="si"] .lateral:focus-within, :root[data-enfoque="si"][data-asoma="lateral"] .lateral,
+  :root[data-enfoque="si"] .principal__barra:focus-within, :root[data-enfoque="si"][data-asoma="barra"] .principal__barra { visibility: visible; opacity: 1; transform: none; transition: opacity .18s ease, transform .18s ease, visibility 0s; }
+  :root[data-enfoque="si"] .avisos__flotantes { left: 50%; width: min(560px, calc(100% - 32px)); }
+  .principal__barra--vacia { display: none; }
+}
+
+/* ---------- Sin JavaScript ---------- */
+.sin-js { display: none; max-width: 40ch; margin: var(--e8) auto; padding: 0 var(--e5); font: 1.125rem/1.6 var(--serif); }
+.sin-js__titulo { margin-bottom: var(--e3); font: 700 1.75rem/1.2 var(--serif); }
+
+/* ---------- Pantallas pequeñas: una sola vista (lista o editor) ---------- */
+@media (max-width: 599px) {
+  .app { grid-template-columns: minmax(0, 1fr); }
+  .lateral { border-right: 0; }
+  .app[data-vista="lista"] .principal { display: none; }
+  .app[data-vista="editor"] .lateral { display: none; }
+  .boton-volver { display: inline-flex; }
+  .principal__barra { padding: var(--e1) var(--e2); }
+  .editor, .vista { padding-top: var(--e5); }
+  .estado { gap: 2px var(--e4); }
+  .estado__enfoque { display: none; }                  /* en una sola vista el modo enfoque no tiene qué ocultar */
+  .avisos__flotantes { bottom: calc(72px + var(--vv-tapado)); }
+}
+
+/* ---------- Barra lateral colapsable entre 600 y 899 px, y también con poca altura (móvil apaisado de 900 px o más) ---------- */
+@media (min-width: 600px) and (max-width: 899px), (min-width: 900px) and (max-height: 520px) {
+  .boton-lateral { display: inline-flex; }
+  .app[data-lateral="oculta"] { grid-template-columns: minmax(0, 1fr); }
+  .app[data-lateral="oculta"] .lateral { display: none; }
+  .app[data-lateral="oculta"] .avisos__flotantes { left: 50%; width: min(560px, calc(100% - 32px)); }
+}
+
+/* ---------- Pantallas estrechas y muy bajas (zoom al 400 %): la página se desplaza en vez de aplastar la lista y el editor ---------- */
+@media (max-width: 599px) and (max-height: 520px) {
+  html, body { height: auto; }
+  body { overflow: visible; }
+  .app { height: auto; min-height: 100vh; min-height: 100dvh; }
+  .lista-nav { flex: none; height: 168px; }
+  .lienzo { flex: none; height: 240px; }
+}
+
+/* ---------- Móvil apaisado y ventanas bajas (desde 600 px de ancho): la cabecera de la barra lateral se compacta y la barra se desplaza entera,
+   con la lista en un alto cómodo (unas dos notas y media), en vez de dejarla en una o dos filas entre el buscador y el pie ---------- */
+@media (min-width: 600px) and (max-height: 520px) {
+  .lateral { overflow-y: auto; overscroll-behavior: contain; }
+  .lateral__cab { padding: var(--e2) var(--e3) var(--e1); }
+  .busqueda { padding: 0 var(--e3) var(--e1); }
+  .busqueda__cuenta { margin: var(--e1) var(--e1) 0; min-height: 0; }
+  .lista-nav { flex: none; height: 168px; }
+}
+
+/* ---------- Contraste forzado: el sistema reemplaza fondos y sombras, así que el estado se marca con bordes de color de sistema ---------- */
+@media (forced-colors: active) {
+  .nota[aria-selected="true"] { border-color: Highlight; border-width: 3px; padding: 8px 10px 8px 12px; }
+  .boton-texto[aria-pressed="true"], .estado__enfoque[aria-pressed="true"] { border: 2px solid Highlight; }
+}
+
+/* ---------- Movimiento ---------- */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { transition-duration: 0s !important; transition-delay: 0s !important; animation-duration: 0s !important; animation-iteration-count: 1 !important; scroll-behavior: auto !important; }
+}
+</style>
+<noscript><style>.app { display: none; } .sin-js { display: block; } body { overflow: auto; }</style></noscript>
+</head>
+<body>
+<a class="salto" href="#contenido">Saltar al contenido</a>
+<svg class="defs-svg" width="0" height="0" aria-hidden="true" focusable="false"><defs><path id="foliolo" vector-effect="non-scaling-stroke" d="M0 0C5.5-9 5.5-27 0-42C-5.5-27-5.5-9 0 0Z"/><g id="hoja"><path vector-effect="non-scaling-stroke" d="M0 0L0-15"/><g transform="translate(0-15)"><use href="#foliolo" transform="rotate(-68) scale(0.6)"/><path vector-effect="non-scaling-stroke" d="M0-3L0-19.8" transform="rotate(-68)"/><use href="#foliolo" transform="rotate(-45) scale(0.8)"/><path vector-effect="non-scaling-stroke" d="M0-3L0-26.4" transform="rotate(-45)"/><use href="#foliolo" transform="rotate(-22) scale(0.95)"/><path vector-effect="non-scaling-stroke" d="M0-3L0-31.4" transform="rotate(-22)"/><use href="#foliolo" transform="rotate(0) scale(1.08)"/><path vector-effect="non-scaling-stroke" d="M0-3L0-35.6" transform="rotate(0)"/><use href="#foliolo" transform="rotate(22) scale(0.95)"/><path vector-effect="non-scaling-stroke" d="M0-3L0-31.4" transform="rotate(22)"/><use href="#foliolo" transform="rotate(45) scale(0.8)"/><path vector-effect="non-scaling-stroke" d="M0-3L0-26.4" transform="rotate(45)"/><use href="#foliolo" transform="rotate(68) scale(0.6)"/><path vector-effect="non-scaling-stroke" d="M0-3L0-19.8" transform="rotate(68)"/></g></g><g id="hoja5"><path vector-effect="non-scaling-stroke" d="M0 0L0-12"/><g transform="translate(0-12)"><use href="#foliolo" transform="rotate(-56) scale(0.62)"/><use href="#foliolo" transform="rotate(-28) scale(0.88)"/><use href="#foliolo" transform="rotate(0) scale(1)"/><use href="#foliolo" transform="rotate(28) scale(0.88)"/><use href="#foliolo" transform="rotate(56) scale(0.62)"/></g></g></defs></svg>
+
+<div class="sin-js">
+  <p class="sin-js__titulo">Ceiba necesita JavaScript</p>
+  <p>Este cuaderno guarda tus notas en el navegador y para hacerlo necesita JavaScript. Actívalo para esta página y vuelve a cargarla.</p>
+</div>
+
+<div class="app" id="app" data-vista="lista">
+
+  <aside class="lateral" id="lateral" aria-label="Barra lateral">
+    <header class="lateral__cab">
+      <h1 class="marca"><svg class="rama rama--sello" viewBox="0 0 44 44" aria-hidden="true" focusable="false"><path class="tronco" d="M5 38C13 36 21 30 28 20C31 15 34 11 38 6"/><path class="espina" d="M12 36.5L14.6 40L15.4 35.2M22 29.4L24 33L26.4 28.4M27.4 21L30 24.5L31.5 19.5"/><path class="ramita" d="M17 33C19 28 19 24 17 19"/><use href="#hoja5" transform="translate(17 19) rotate(-14) scale(.36)"/><use href="#hoja5" transform="translate(26 23) rotate(42) scale(.3)"/><use href="#hoja5" transform="translate(37 8) rotate(50) scale(.34)"/></svg><span>Ceiba</span></h1>
+      <button type="button" class="boton boton--primario boton--compacto" id="nueva">
+        <svg class="icono" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M12 5v14M5 12h14"/></svg>
+        <span>Nueva nota</span>
+      </button>
+    </header>
+
+    <div class="busqueda" role="search">
+      <label class="solo-lector" for="busqueda">Buscar notas</label>
+      <div class="busqueda__campo">
+        <svg class="icono busqueda__lupa" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="11" cy="11" r="6.5"/><path d="M16 16l4.5 4.5"/></svg>
+        <input class="busqueda__entrada" id="busqueda" type="search" placeholder="Buscar en las notas" autocomplete="off" autocapitalize="off" spellcheck="false" enterkeyhint="search" maxlength="200">
+        <button type="button" class="boton-icono busqueda__limpiar" id="limpiar" aria-label="Limpiar búsqueda" hidden>
+          <svg class="icono" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M6 6l12 12M18 6L6 18"/></svg>
+        </button>
+      </div>
+      <p class="busqueda__cuenta" id="cuenta"></p>
+    </div>
+
+    <nav class="lista-nav" aria-label="Lista de notas">
+      <ul class="lista" id="lista" role="listbox" aria-label="Notas" tabindex="0"></ul>
+      <div class="sin-resultados" id="sin-resultados" hidden>
+        <p class="sin-resultados__titulo" id="sin-resultados-titulo"></p>
+        <p class="sin-resultados__ayuda">Prueba con menos palabras o revisa la ortografía. La búsqueda no distingue mayúsculas ni tildes.</p>
+        <button type="button" class="boton boton--secundario" id="borrar-busqueda">Borrar búsqueda</button>
+      </div>
+      <p class="lista-vacia" id="lista-vacia" hidden>Todavía no hay notas. Crea la primera con el botón Nueva nota.</p>
+    </nav>
+
+    <div class="lateral__pie">
+      <p class="plan" id="plan" hidden>
+        <span class="plan__nombre" id="plan-nombre"></span>
+        <span>Sin cobro y sin límites de funciones.</span>
+      </p>
+      <div class="pie__botones">
+        <button type="button" class="boton-texto" id="tema" title="Cambiar el tema: sistema, claro u oscuro">
+          <svg class="icono" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+            <g data-tema="sistema"><rect x="3" y="4.5" width="18" height="12" rx="2.5"/><path d="M8.5 20h7M12 16.5V20"/></g>
+            <g data-tema="claro" hidden><circle cx="12" cy="12" r="4"/><path d="M12 3v2M12 19v2M3 12h2M19 12h2M5.6 5.6l1.4 1.4M17 17l1.4 1.4M5.6 18.4L7 17M17 7l1.4-1.4"/></g>
+            <g data-tema="oscuro" hidden><path d="M19.5 14.5A8 8 0 0 1 9.5 4.5a8 8 0 1 0 10 10z"/></g>
+          </svg>
+          <span id="tema-texto">Tema: sistema</span>
+        </button>
+        <button type="button" class="boton-texto" id="respaldo" aria-haspopup="dialog" aria-label="Copia de seguridad" title="Copia de seguridad: exportar o importar todas las notas">
+          <svg class="icono" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><rect x="3.5" y="4.5" width="17" height="5" rx="1.5"/><path d="M5 9.5V18a1.5 1.5 0 0 0 1.5 1.5h11A1.5 1.5 0 0 0 19 18V9.5M10 13.5h4"/></svg>
+          <span>Copia</span>
+        </button>
+        <button type="button" class="boton-texto" id="atajos" aria-haspopup="dialog" title="Atajos de teclado (?)">
+          <svg class="icono" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><rect x="3" y="6" width="18" height="12" rx="3"/><path d="M7 10h.01M11 10h.01M15 10h.01M7.5 14h9"/></svg>
+          <span>Atajos</span>
+        </button>
+      </div>
+    </div>
+  </aside>
+
+  <main class="principal" id="contenido" tabindex="-1" aria-label="Editor de la nota">
+    <div class="principal__barra" id="barra">
+      <button type="button" class="boton-texto boton-volver" id="volver" aria-label="Volver a la lista">
+        <svg class="icono" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M15 5l-7 7 7 7"/></svg>
+        <span>Lista</span>
+      </button>
+      <button type="button" class="boton-texto boton-lateral" id="lateral-alternar" aria-expanded="true" aria-controls="lateral">
+        <svg class="icono" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><rect x="3.5" y="4.5" width="17" height="15" rx="2.5"/><path d="M9.5 4.5v15"/></svg>
+        <span id="lateral-texto">Ocultar lista</span>
+      </button>
+      <div class="barra__acciones" id="acciones" role="group" aria-label="Acciones de la nota">
+        <button type="button" class="boton-texto" id="modo" aria-pressed="false" aria-keyshortcuts="Alt+P" title="Vista previa (Alt+P)">
+          <svg class="icono" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12z"/><circle cx="12" cy="12" r="2.75"/></svg>
+          <span>Vista previa</span>
+        </button>
+        <button type="button" class="boton-texto boton-texto--peligro" id="eliminar" aria-keyshortcuts="Alt+Backspace" title="Eliminar la nota (Alt+Retroceso)">
+          <svg class="icono" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M4.5 7h15M9.5 7V4.5h5V7M6.5 7l.8 12h9.4l.8-12M10 11v5M14 11v5"/></svg>
+          <span class="rotulo">Eliminar</span>
+        </button>
+        <button type="button" class="boton-texto" id="exportar-nota" title="Descargar esta nota como archivo .md">
+          <svg class="icono" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M12 4.5v10M8 10.5l4 4 4-4M5 19.5h14"/></svg>
+          <span class="rotulo">Exportar nota</span>
+        </button>
+      </div>
+    </div>
+
+    <div class="lienzo" id="lienzo">
+      <textarea class="editor" id="editor" aria-label="Texto de la nota" lang="es" spellcheck="true" autocomplete="off" autocapitalize="sentences" placeholder="Empieza a escribir. La primera línea será el título de la nota."></textarea>
+      <article class="vista" id="vista" tabindex="0" aria-label="Vista previa de la nota" hidden></article>
+    </div>
+
+    <div class="vacio" id="vacio" hidden>
+      <svg class="rama" viewBox="0 0 360 190" aria-hidden="true" focusable="false"><path class="tronco" d="M-7.2 169.1C-3.9 168.7 4.7 167.6 12.6 166.4C20.5 165.3 31.1 164 40.4 162.3C49.7 160.6 59.4 158.8 68.3 156.2C77.2 153.7 85 150.3 93.7 146.8C102.4 143.3 111.2 138.7 120.3 135.1C129.5 131.5 138.8 127.6 148.7 125.2C158.6 122.7 169.2 121.5 179.5 120.2C189.8 119 200.7 118.8 210.6 117.5C220.5 116.1 229.9 114.8 238.8 112.2C247.6 109.6 255.6 105.8 263.6 101.9C271.6 98 279.2 93.1 286.7 88.7C294.1 84.3 301.2 79.9 308.4 75.4C315.7 70.9 323.2 66.3 330.3 61.7C337.3 57.1 344.9 51.8 350.7 47.9C356.4 44.1 362.5 40 364.9 38.4"/><path class="tronco" d="M-4.8 182.9C-1.6 182.4 6.6 181 14.5 179.6C22.4 178.3 33.2 176.7 42.7 174.7C52.2 172.8 62.4 170.7 71.7 167.8C81 164.8 89.5 161 98.3 157.2C107.1 153.4 115.7 148.6 124.6 144.9C133.4 141.2 142 137.4 151.3 134.8C160.6 132.3 170.4 131 180.5 129.5C190.6 128.1 201.5 127.7 211.6 126.1C221.8 124.5 232 122.8 241.2 119.8C250.5 116.9 258.9 112.6 267 108.4C275.2 104.1 282.8 99 290.2 94.4C297.6 89.7 304.4 85.3 311.6 80.6C318.7 75.9 326.3 70.9 333.3 66.1C340.2 61.3 347.7 55.8 353.3 51.8C359 47.7 364.8 43.3 367.1 41.6"/><path class="tronco" d="M364.9 38.4L367.1 41.6"/><path class="corteza" d="M5.7 174.2C12.5 173.1 32.9 170.7 46.5 167.6C60.1 164.5 73.9 160.7 87.3 155.8C100.7 150.8 113.2 143 126.9 138.1C140.7 133.2 154.8 129 169.7 126.1C184.6 123.3 201.6 124 216.2 121.1C230.7 118.3 244.5 114.5 257.2 109.2C269.8 103.9 280.9 95.9 292.1 89.2C303.3 82.5 315 75 324.5 68.8C333.9 62.6 344.9 54.8 348.9 52"/><path class="espina" d="M54.4 159.7L60 147.8L64.6 157.2"/><path class="espina" d="M80.3 164.8L91.3 170.5L89.9 161.1"/><path class="espina" d="M111.1 139.1L114.9 127.8L120.4 135"/><path class="espina" d="M155.7 133.5L165 139.7L165.5 131.6"/><path class="espina" d="M200.7 118.5L207.8 111.1L210.4 117.5"/><path class="espina" d="M236.7 121.3L246.5 126.5L245.8 118.3"/><path class="espina" d="M267.4 100L271.5 91.6L275.6 95.3"/><path class="espina" d="M293.6 92.1L303.2 93L301.4 87.1"/><path class="espina" d="M326.5 64.3L329.7 55.6L334 59.2"/><path class="espina" d="M349.7 54.3L359.5 55.2L357 49.2"/><path class="ramita" d="M91.7 153.9Q108.1 111.9 104.9 66.9"/><path class="ramita" d="M221.2 120.4Q233 80.9 262 51.6"/><path class="ramita" d="M310 78Q324 55.3 326.5 28.7"/><path class="pedicelo" d="M160.6 132.6L159.6 146.6"/><path class="vaina" d="M159.6 146.6C146.1 167.7 152.8 190.2 156.6 190.4C160.3 190.7 170 169.3 159.6 146.6Z"/><path class="vaina-linea" d="M159.3 151.8L156.9 186.1"/><use href="#hoja" transform="translate(104.9 66.9) rotate(-4.2) scale(0.9)"/><use href="#hoja" transform="translate(103.5 109.4) rotate(47.9) scale(0.7)"/><use href="#hoja" transform="translate(105.4 84.8) rotate(-64.9) scale(0.7)"/><use href="#hoja" transform="translate(262 51.6) rotate(44.8) scale(0.8)"/><use href="#hoja" transform="translate(238.1 82.1) rotate(97.1) scale(0.7)"/><use href="#hoja" transform="translate(251.1 63.7) rotate(-10.8) scale(0.7)"/><use href="#hoja" transform="translate(326.5 28.7) rotate(5.6) scale(0.7)"/><use href="#hoja" transform="translate(321.4 53.3) rotate(57.5) scale(0.6)"/></svg>
+      <h2 class="vacio__titulo" id="vacio-titulo">Tu cuaderno está vacío</h2>
+      <p class="vacio__texto" id="vacio-texto">Una línea basta para empezar. Todo se guarda solo, en este navegador.</p>
+      <button type="button" class="boton boton--primario" id="primera">Escribir la primera nota</button>
+    </div>
+
+    <div class="estado" id="estado" role="group" aria-label="Estado de la nota">
+      <span class="estado__guardado" id="est-guardado" data-estado="guardado">Guardado</span>
+      <span id="est-palabras">0 palabras</span>
+      <span id="est-caracteres">0 caracteres</span>
+      <span id="est-edicion">Última edición: <time id="est-fecha"></time></span>
+      <button type="button" class="estado__enfoque" id="enfoque" aria-pressed="false" aria-keyshortcuts="Alt+\" title="Modo enfoque (Alt+\)">Modo enfoque</button>
+    </div>
+  </main>
+
+  <div class="avisos" id="avisos">
+    <div class="avisos__banda" id="avisos-banda"></div>
+    <div class="avisos__flotantes" id="avisos-flotantes"></div>
+  </div>
+
+</div>
+
+<div class="solo-lector" id="vivo" role="status" aria-live="polite" aria-atomic="true"></div>
+
+<dialog class="ayuda" id="ayuda" aria-labelledby="ayuda-titulo" aria-modal="true">
+  <div class="ayuda__caja">
+    <div class="ayuda__cab">
+      <h2 class="ayuda__titulo" id="ayuda-titulo">Atajos de teclado</h2>
+    </div>
+    <div class="ayuda__cuerpo" tabindex="0" role="region" aria-label="Lista de atajos">
+      <p class="ayuda__nota">En Mac, Alt es la tecla Opción y donde dice Ctrl se usa Cmd. Si tu teclado usa Opción+N para la tilde (ñ), esa combinación no crea notas: usa el botón Nueva nota.</p>
+
+      <h3 class="ayuda__grupo">Notas</h3>
+      <dl>
+        <div class="atajo"><dt>Nueva nota</dt><dd><kbd>Alt</kbd> + <kbd>N</kbd></dd></div>
+        <div class="atajo"><dt>Eliminar la nota<small>Con el foco en la lista o fuera de un campo de texto. En el editor y en la búsqueda no actúa: ahí borra una palabra.</small></dt><dd><kbd>Alt</kbd> + <kbd>Retroceso</kbd></dd></div>
+        <div class="atajo"><dt>Deshacer la eliminación<small>Disponible durante 8 segundos.</small></dt><dd><kbd>Alt</kbd> + <kbd>Z</kbd></dd></div>
+        <div class="atajo"><dt>Vista previa o escribir</dt><dd><kbd>Alt</kbd> + <kbd>P</kbd></dd></div>
+        <div class="atajo"><dt>Modo enfoque</dt><dd><kbd>Alt</kbd> + <kbd>\</kbd></dd></div>
+      </dl>
+
+      <h3 class="ayuda__grupo">Buscar</h3>
+      <dl>
+        <div class="atajo"><dt>Buscar en las notas</dt><dd><kbd>Ctrl</kbd> + <kbd>K</kbd> o <kbd>/</kbd></dd></div>
+        <div class="atajo"><dt>Borrar la búsqueda y volver a la lista</dt><dd><kbd>Esc</kbd></dd></div>
+      </dl>
+
+      <h3 class="ayuda__grupo">Lista de notas</h3>
+      <dl>
+        <div class="atajo"><dt>Moverse entre notas</dt><dd><kbd>Flecha arriba</kbd> <kbd>Flecha abajo</kbd></dd></div>
+        <div class="atajo"><dt>Primera o última nota</dt><dd><kbd>Inicio</kbd> <kbd>Fin</kbd></dd></div>
+        <div class="atajo"><dt>Pasar al editor</dt><dd><kbd>Enter</kbd> o <kbd>Flecha derecha</kbd></dd></div>
+      </dl>
+
+      <h3 class="ayuda__grupo">Editor</h3>
+      <dl>
+        <div class="atajo"><dt>Volver a la lista<small>El texto no se pierde.</small></dt><dd><kbd>Esc</kbd></dd></div>
+        <div class="atajo"><dt>Seguir una lista al escribir<small>Continúa viñetas, números y tareas; una línea vacía termina la lista.</small></dt><dd><kbd>Enter</kbd></dd></div>
+        <div class="atajo"><dt>Pasar a otro control<small>No inserta tabulaciones.</small></dt><dd><kbd>Tab</kbd></dd></div>
+      </dl>
+
+      <h3 class="ayuda__grupo">Ayuda</h3>
+      <dl>
+        <div class="atajo"><dt>Mostrar esta ayuda<small>Fuera de los campos de texto.</small></dt><dd><kbd>?</kbd></dd></div>
+        <div class="atajo"><dt>Cerrar esta ayuda</dt><dd><kbd>Esc</kbd></dd></div>
+      </dl>
+    </div>
+    <div class="ayuda__pie">
+      <button type="button" class="boton boton--primario" id="cerrar-ayuda">Cerrar</button>
+    </div>
+  </div>
+</dialog>
+
+<dialog class="ayuda" id="respaldo-dialogo" aria-labelledby="respaldo-titulo" aria-modal="true">
+  <div class="ayuda__caja">
+    <div class="ayuda__cab">
+      <h2 class="ayuda__titulo" id="respaldo-titulo">Copia de seguridad</h2>
+    </div>
+    <div class="ayuda__cuerpo respaldo__cuerpo">
+      <p class="ayuda__nota">Tus notas viven solo en este navegador. Una copia en un archivo las pone a salvo si borras los datos del sitio y sirve para llevarlas a otro navegador u otro equipo.</p>
+      <div class="respaldo__accion">
+        <button type="button" class="boton boton--primario" id="exportar-todo">
+          <svg class="icono" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M12 4.5v10M8 10.5l4 4 4-4M5 19.5h14"/></svg>
+          <span>Exportar todo</span>
+        </button>
+        <p>Descarga todas las notas en un archivo .json con la fecha de hoy en el nombre.</p>
+      </div>
+      <div class="respaldo__accion">
+        <button type="button" class="boton boton--secundario" id="importar" aria-describedby="respaldo-error">
+          <svg class="icono" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M12 14.5v-10M8 8.5l4-4 4 4M5 19.5h14"/></svg>
+          <span>Importar copia</span>
+        </button>
+        <p>Elige un archivo .json hecho con Exportar todo (hasta 5 MB y 5.000 notas). Las notas se combinan por identificador: si una ya existe, queda la que se editó más recientemente. No se borra ninguna nota.</p>
+      </div>
+      <div class="respaldo__accion" id="copia-danada" hidden>
+        <button type="button" class="boton boton--secundario" id="descargar-danada">
+          <svg class="icono" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M12 4.5v10M8 10.5l4 4 4-4M5 19.5h14"/></svg>
+          <span>Descargar copia dañada</span>
+        </button>
+        <p>Al abrir Ceiba se conservó una copia de notas que no se pudieron leer. Descárgala para revisarla o recuperar lo que contenga.</p>
+      </div>
+      <input type="file" id="archivo-importar" accept=".json,application/json" aria-label="Archivo de copia de seguridad (.json)" hidden>
+      <p class="respaldo__error" id="respaldo-error" tabindex="-1" hidden></p>
+    </div>
+    <div class="ayuda__pie">
+      <button type="button" class="boton boton--secundario" id="cerrar-respaldo">Cerrar</button>
+    </div>
+  </div>
+</dialog>
+
+<script>
+/* ==========================================================================
+   Ceiba: núcleo puro (window.Ceiba)
+   Solo funciones sin estado: no tocan localStorage, la red ni variables globales.
+
+   Subconjunto de markdown que entiende renderMarkdown (no es CommonMark completo):
+   - Bloques: títulos # a ###### (con cierre opcional), párrafos, citas con > (una
+     anidación), listas con -, * o + y numeradas con 1. o 1) (anidadas por sangría
+     de 2 a 4 espacios, con tareas [ ] y [x]), cercas de código con ``` o ~~~,
+     regla horizontal y tablas con alineación.
+   - En línea: **negrita**, *cursiva*, ~~tachado~~, `código`, [texto](url "título"),
+     <https://autoenlace>, ![alt](url) (se muestra como enlace, nunca se carga) y
+     escapes con barra invertida.
+   - Diferencias a propósito: un salto de línea simple dentro de un párrafo es un
+     salto visible; las listas siempre son compactas; no hay código por sangría,
+     títulos con subrayado, HTML crudo, entidades (&amp; se ve tal cual), enlaces por
+     referencia ni enlaces sueltos sin <>. Los enlaces con un esquema que no sea
+     http, https, mailto o ancla se muestran como el texto que se escribió.
+   Seguridad: el resultado se construye solo con createElement y createTextNode
+   (nunca innerHTML con texto del usuario); ningún atributo sale del texto sin pasar
+   por urlSegura; la profundidad de anidación y los recorridos de lectura están
+   acotados, de modo que una entrada hostil no cuelga ni desborda la pila.
+   ========================================================================== */
+(function () {
+  'use strict';
+
+  /* ---------------------------------------------------------------- texto básico */
+
+  /** Convierte a cadena solo lo que tiene sentido; objetos, null y undefined dan ''. */
+  function aTexto(v) {
+    if (typeof v === 'string') return v;
+    if (typeof v === 'number' || typeof v === 'boolean' || typeof v === 'bigint') return String(v);
+    return '';
+  }
+
+  const ESCAPES = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' };
+  /** Única función de escape de HTML. Segura en contexto de texto y de atributos entre comillas. */
+  function escapar(s) {
+    return aTexto(s).replace(/[&<>"']/g, function (c) { return ESCAPES[c]; });
+  }
+
+  /** Recorta por puntos de código sin partir pares sustitutos. */
+  function cortar(s, max) {
+    if (s.length <= max) return s;
+    let i = 0, cuenta = 0;
+    while (i < s.length && cuenta < max) {
+      const c = s.charCodeAt(i);
+      i += (c >= 0xD800 && c <= 0xDBFF && i + 1 < s.length) ? 2 : 1;
+      cuenta++;
+    }
+    return s.slice(0, i);
+  }
+
+  /** Primera línea con algo más que espacios a partir de `desde`. Devuelve { linea, sig } o null. */
+  function lineaNoVacia(t, desde) {
+    const n = t.length;
+    let i = desde;
+    while (i < n) {
+      let j = i;
+      while (j < n) { const c = t.charCodeAt(j); if (c === 10 || c === 13) break; j++; }
+      const linea = t.slice(i, j);
+      let sig = j;
+      if (sig < n) sig += (t.charCodeAt(sig) === 13 && t.charCodeAt(sig + 1) === 10) ? 2 : 1;
+      if (/\S/.test(linea)) return { linea: linea, sig: sig };
+      i = sig;
+    }
+    return null;
+  }
+
+  const SIN_TITULO = 'Sin título';
+
+  /** Título: primera línea no vacía sin # ni espacios iniciales, máximo 80 caracteres. */
+  function titulo(texto) {
+    const r = lineaNoVacia(aTexto(texto), 0);
+    if (!r) return SIN_TITULO;
+    const limpio = cortar(r.linea.replace(/^[#\s]+/, '').trimEnd(), 80).trimEnd();
+    return limpio || SIN_TITULO;
+  }
+
+  /** Extracto: primera línea con texto después de la del título, máximo 120 caracteres. */
+  function extracto(texto) {
+    const t = aTexto(texto);
+    const a = lineaNoVacia(t, 0);
+    if (!a) return '';
+    const b = lineaNoVacia(t, a.sig);
+    if (!b) return '';
+    return cortar(b.linea.trim(), 120).trimEnd();
+  }
+
+  /** Minúsculas y sin marcas diacríticas (NFD), para comparar sin distinguir tildes. */
+  function normalizar(s) {
+    return aTexto(s).toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+  }
+
+  /** Verdadero si todas las palabras de la consulta aparecen en el texto de la nota. */
+  function coincide(nota, consulta) {
+    const palabras = normalizar(consulta).split(/\s+/).filter(Boolean);
+    if (!palabras.length) return true;
+    const cuerpo = normalizar(nota && typeof nota.texto === 'string' ? nota.texto : '');
+    for (let i = 0; i < palabras.length; i++) if (cuerpo.indexOf(palabras[i]) === -1) return false;
+    return true;
+  }
+
+  /* ---------------------------------------------------------------- fechas */
+
+  const MS_MIN = 60000, MS_H = 3600000, MS_DIA = 86400000, MAX_FECHA = 8.64e15;
+  const formatos = new Map();
+
+  function formato(loc, clave, opciones) {
+    const k = String(loc) + '|' + clave;
+    let f = formatos.get(k);
+    if (!f) {
+      try { f = new Intl.DateTimeFormat(loc, opciones); }
+      catch (e) { f = new Intl.DateTimeFormat('es', opciones); }
+      formatos.set(k, f);
+    }
+    return f;
+  }
+
+  function fechaValida(ms) { return typeof ms === 'number' && isFinite(ms) && Math.abs(ms) <= MAX_FECHA; }
+
+  function diasCalendario(a, b) {
+    const A = new Date(a), B = new Date(b);
+    return Math.round((Date.UTC(B.getFullYear(), B.getMonth(), B.getDate()) - Date.UTC(A.getFullYear(), A.getMonth(), A.getDate())) / MS_DIA);
+  }
+
+  function fechaCorta(ms, ref, loc) {
+    const mismoAnio = new Date(ms).getFullYear() === new Date(ref).getFullYear();
+    return mismoAnio
+      ? formato(loc, 'corta', { day: 'numeric', month: 'short' }).format(ms)
+      : formato(loc, 'cortaAnio', { day: 'numeric', month: 'short', year: 'numeric' }).format(ms);
+  }
+
+  /**
+   * Marca de tiempo relativa corta. Las etiquetas están en español; `loc` solo afecta a la
+   * fecha corta. Si `ahora` no es válido se usa Date.now(). El futuro nunca da valores negativos:
+   * hasta un minuto es "ahora mismo" y más allá se muestra la fecha corta.
+   */
+  function tiempoRelativo(ms, ahora, loc) {
+    if (!fechaValida(ms)) return '';
+    if (loc === undefined) loc = 'es';
+    const ref = fechaValida(ahora) ? ahora : Date.now();
+    const d = ref - ms;
+    if (d < 0) return d > -MS_MIN ? 'ahora mismo' : fechaCorta(ms, ref, loc);
+    if (d < MS_MIN) return 'ahora mismo';
+    if (d < MS_H) return 'hace ' + Math.floor(d / MS_MIN) + ' min';
+    if (d < MS_DIA) return 'hace ' + Math.floor(d / MS_H) + ' h';
+    if (diasCalendario(ms, ref) === 1) return 'ayer';
+    return fechaCorta(ms, ref, loc);
+  }
+
+  /** Fecha y hora completas, por ejemplo "16 oct 2026, 10:32". */
+  function fechaCompleta(ms, loc) {
+    if (!fechaValida(ms)) return '';
+    if (loc === undefined) loc = 'es';
+    return formato(loc, 'completa', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }).format(ms);
+  }
+
+  /* ---------------------------------------------------------------- URL segura */
+
+  const URL_MAX = 8000;
+  const RE_CTRL = /[\0-\x20\x7f-\x9f\u{2028}\u{2029}]/u;
+
+  /**
+   * Devuelve la URL (sin espacios en los bordes) si es http, https, mailto o ancla; si no, null.
+   * Es una lista blanca estricta sobre la cadena tal cual: nada se decodifica ni se limpia, de modo que
+   * mayúsculas, espacios, entidades o caracteres de control escondidos solo pueden producir un rechazo.
+   */
+  function urlSegura(url) {
+    if (typeof url !== 'string') return null;
+    const u = url.trim();
+    if (!u || u.length > URL_MAX || RE_CTRL.test(u)) return null;
+    if (u.charCodeAt(0) === 35) return u;                       // ancla "#..."
+    if (/^mailto:./i.test(u)) return u;
+    if (/^https?:\/\/[^/?#\\]+/i.test(u)) {
+      try { new URL(u); } catch (e) { return null; }
+      return u;
+    }
+    return null;
+  }
+
+  /* ---------------------------------------------------------------- importación y archivos */
+
+  const MAX_NOTAS = 5000;
+  const MSG_FORMATO = 'El archivo no es una copia de seguridad de Ceiba.';
+
+  function esObjeto(v) { return v !== null && typeof v === 'object' && !Array.isArray(v); }
+  /** Lee solo propiedades propias: ignora lo heredado, incluido lo que alguien ponga en Object.prototype. */
+  function propio(o, k) { return Object.prototype.hasOwnProperty.call(o, k) ? o[k] : undefined; }
+  /** Mismo rango que fechaValida (el de Date): un reloj anterior a 1970 da fechas negativas legítimas, no notas dañadas. */
+  function fechaImportable(v) { return fechaValida(v); }
+
+  /** Deja el id con [A-Za-z0-9_-], máximo 64, y sin coincidir con ninguna clave de Object.prototype. */
+  function sanearId(id) {
+    let s = id.slice(0, 64).replace(/[^A-Za-z0-9_-]/g, '_');
+    if (s in Object.prototype) s = 'n_' + s;
+    return s;
+  }
+
+  /**
+   * Valida un respaldo ya convertido con JSON.parse. Devuelve { notas, omitidas } o { error }.
+   * Esquema estricto: { version: 1, notas: [{ id, texto, creada, editada }] }. Las notas inválidas se
+   * omiten y se cuentan; los ids repetidos (también tras sanear) se resuelven por la edición más reciente.
+   * `opciones.limite` cambia el máximo de notas (5.000 por omisión: el de una importación). Quien lee lo que la
+   * propia aplicación guardó pasa Infinity: un cuaderno largo no es un cuaderno dañado.
+   */
+  function validarImportacion(json, opciones) {
+    const limite = opciones && typeof opciones.limite === 'number' ? opciones.limite : MAX_NOTAS;
+    if (!esObjeto(json)) return { error: MSG_FORMATO };
+    const version = propio(json, 'version');
+    const notas = propio(json, 'notas');
+    if (version !== 1) {
+      return { error: (typeof version === 'number' && version > 1) ? 'Esta copia viene de una versión más nueva de Ceiba y no se puede importar.' : MSG_FORMATO };
+    }
+    if (!Array.isArray(notas)) return { error: MSG_FORMATO };
+    if (notas.length > limite) return { error: 'La copia tiene más de 5.000 notas y no se puede importar.' };
+    const salida = [];
+    const posicion = new Map();
+    let omitidas = 0;
+    for (let i = 0; i < notas.length; i++) {
+      const n = notas[i];
+      if (!esObjeto(n)) { omitidas++; continue; }
+      const id = propio(n, 'id'), texto = propio(n, 'texto'), creada = propio(n, 'creada'), editada = propio(n, 'editada');
+      if (typeof id !== 'string' || !id || typeof texto !== 'string' || !fechaImportable(creada) || !fechaImportable(editada)) { omitidas++; continue; }
+      const nid = sanearId(id);
+      const nueva = { id: nid, texto: texto, creada: creada, editada: editada };
+      const previa = posicion.get(nid);
+      if (previa === undefined) { posicion.set(nid, salida.length); salida.push(nueva); continue; }
+      omitidas++;
+      if (editada > salida[previa].editada) salida[previa] = nueva;
+    }
+    return { notas: salida, omitidas: omitidas };
+  }
+
+  const RE_RESERVADO = /^(?:con|prn|aux|nul|com[0-9]|lpt[0-9])(?:\.|$)/i;
+
+  function recortarBordes(s) {
+    let a = 0, b = s.length;
+    while (a < b && (s[a] === '.' || s[a] === ' ')) a++;
+    while (b > a && (s[b - 1] === '.' || s[b - 1] === ' ')) b--;
+    return s.slice(a, b);
+  }
+
+  /** Nombre de archivo .md a partir de un título: sin separadores, controles ni nombres reservados de Windows. */
+  function nombreArchivo(tit) {
+    let b = aTexto(tit).slice(0, 2000).normalize('NFC');
+    b = b.replace(/[\\/:*?"<>|\s]/g, ' ').replace(/[\p{Cc}\p{Cf}]/gu, '').replace(/ {2,}/g, ' ');
+    b = recortarBordes(cortar(recortarBordes(b), 80));
+    if (!b) b = SIN_TITULO;
+    if (RE_RESERVADO.test(b)) b = 'nota-' + b;
+    return b + '.md';
+  }
+
+  /* ---------------------------------------------------------------- markdown: constantes y clasificación */
+
+  const MAX_PROF = 8;        // contenedores anidados (citas y listas)
+  const MAX_CITAS = 2;       // una cita dentro de otra
+  const MAX_COLS = 100;      // columnas de una tabla
+  const MAX_ENF = 24;        // elementos en línea anidados; más allá se aplanan
+  const MAX_CORCHETES = 64;  // corchetes abiertos a la vez
+  const MAX_DESTINO = 4000;  // longitud del destino de un enlace
+  const MAX_TITULO = 300;    // longitud del título de un enlace
+  const MAX_ELEMENTOS = 20000;   // elementos que crea un render (en las listas cada <li> crea además un <p> que luego se desenvuelve, así que caben unos 10.000 elementos de lista).
+                                 // Lo caro no es generarlos sino maquetarlos: 50.000 <li> tardan 1,4 s en pintarse; con este tope, unos 0,35 s.
+  let creados = 0;               // elementos creados en el render en curso
+  let recortado = false;         // el render dejó contenido fuera por falta de presupuesto
+
+  // Segundo presupuesto, el de la maquetación de texto "exótico". Cada cambio entre texto y emoji, o entre texto y caracteres chinos, japoneses o coreanos,
+  // abre una racha de fuente nueva, y cada carácter de control o U+FFFD (que no tiene glifo) abre otra: el coste de maquetar una línea crece con el
+  // cuadrado de sus rachas. 100.000 repeticiones de "a" más un carácter nulo tardan más de 10 s; con el tope, unos 60 ms.
+  const MAX_RACHAS_LINEA = 3000;          // rachas en una sola línea (cada línea del texto, no cada párrafo: un salto de línea corta la racha)
+  const MAX_COSTE_EXOTICOS = 18e6;        // suma, por líneas, de rachas al cuadrado: algo más de dos líneas llenas, unos 400 ms de maquetación
+  const RE_EXOTICO = /[\p{Extended_Pictographic}\p{Emoji_Modifier}\p{Regional_Indicator}\u200D\uFE0F]+|[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}]+|[\uFFFD\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F-\u009F]/gu;
+  const RE_EXOTICO_ALGUNO = new RegExp(RE_EXOTICO.source, 'u');
+
+  const PUNT_ASCII = '!"#$%&\'()*+,-./:;<=>?@[\\]^_`{|}~';
+  const ES_PUNT = new Uint8Array(128);
+  const ES_ESP = new Uint8Array(128);
+  const ES_ESPECIAL = new Uint8Array(128);
+  for (const c of PUNT_ASCII) ES_PUNT[c.charCodeAt(0)] = 1;
+  for (const c of [9, 10, 11, 12, 13, 32]) ES_ESP[c] = 1;
+  for (const c of '\\\n`*_~[]!<') ES_ESPECIAL[c.charCodeAt(0)] = 1;
+  const RE_ESPACIO = /\s/u;
+  const RE_PUNT = /[\p{P}\p{S}]/u;
+  const RE_AUTO = /<((?:https?:\/\/|mailto:)[^\s<>]*)>/iy;
+  const RE_SIMPLE = /[\\\n`*_~[\]!<]/;
+  const RE_DELIM = /^:?-+:?$/;
+  const RE_ESCAPE = /\\([!-/:-@[-`{-~])/g;
+  const NO_BLANCA = /\S/;
+
+  function esEspacioCp(cp) { return cp < 128 ? ES_ESP[cp] === 1 : RE_ESPACIO.test(String.fromCodePoint(cp)); }
+  function esPuntCp(cp) { return cp < 128 ? ES_PUNT[cp] === 1 : RE_PUNT.test(String.fromCodePoint(cp)); }
+  function cpAntes(t, i) {
+    const c = t.charCodeAt(i - 1);
+    if (c >= 0xDC00 && c <= 0xDFFF && i >= 2) {
+      const h = t.charCodeAt(i - 2);
+      if (h >= 0xD800 && h <= 0xDBFF) return ((h - 0xD800) << 10) + (c - 0xDC00) + 0x10000;
+    }
+    return c;
+  }
+
+  function sangria(l) { let i = 0; while (i < l.length && l.charCodeAt(i) === 32) i++; return i; }
+
+  function expandirTabs(l) {
+    let i = 0, col = 0;
+    while (i < l.length) {
+      const c = l.charCodeAt(i);
+      if (c === 32) col++; else if (c === 9) col += 4 - (col % 4); else break;
+      i++;
+    }
+    return i === 0 ? l : ' '.repeat(col) + l.slice(i);
+  }
+
+  /* Cada reconocedor mira una sola línea, sin retroceso: coste lineal en el largo de la línea. */
+
+  function abrirCerca(l) {
+    const ind = sangria(l);
+    if (ind > 3) return null;
+    const c = l[ind];
+    if (c !== '`' && c !== '~') return null;
+    let j = ind;
+    while (l[j] === c) j++;
+    if (j - ind < 3) return null;
+    const info = l.slice(j).trim();
+    if (c === '`' && info.indexOf('`') !== -1) return null;
+    return { c: c, n: j - ind, ind: ind, info: info };
+  }
+
+  function cierraCerca(l, f) {
+    const ind = sangria(l);
+    if (ind > 3) return false;
+    let j = ind;
+    while (l[j] === f.c) j++;
+    if (j - ind < f.n) return false;
+    while (j < l.length && (l[j] === ' ' || l[j] === '\t')) j++;
+    return j >= l.length;
+  }
+
+  function encabezado(l) {
+    const ind = sangria(l);
+    if (ind > 3 || l[ind] !== '#') return null;
+    let j = ind;
+    while (l[j] === '#') j++;
+    const nivel = j - ind;
+    if (nivel > 6) return null;
+    if (j < l.length && l[j] !== ' ' && l[j] !== '\t') return null;
+    let txt = l.slice(j).trim();
+    let e = txt.length;
+    while (e > 0 && txt[e - 1] === '#') e--;
+    if (e < txt.length && (e === 0 || txt[e - 1] === ' ' || txt[e - 1] === '\t')) txt = txt.slice(0, e).trimEnd();
+    return txt ? { nivel: nivel, txt: txt } : null;
+  }
+
+  function esRegla(l) {
+    const ind = sangria(l);
+    if (ind > 3) return false;
+    const c = l[ind];
+    if (c !== '-' && c !== '*' && c !== '_') return false;
+    let n = 0;
+    for (let j = ind; j < l.length; j++) {
+      const d = l[j];
+      if (d === c) n++; else if (d !== ' ' && d !== '\t') return false;
+    }
+    return n >= 3;
+  }
+
+  /** Contenido interior de una línea de cita, o null si no es una cita. */
+  function cita(l) {
+    const ind = sangria(l);
+    if (ind > 3 || l[ind] !== '>') return null;
+    let j = ind + 1;
+    if (l[j] === ' ') j++;
+    return l.slice(j);
+  }
+
+  /** Marcador de lista: { ind, tipo, num, resto, vacio, ancho } o null. `ancho` incluye el marcador y sus espacios. */
+  function marcador(l) {
+    const ind = sangria(l);
+    const c = l[ind];
+    let tipo, num = 0, fin;
+    if (c === '-' || c === '*' || c === '+') {
+      tipo = 'ul'; fin = ind + 1;
+    } else if (c !== undefined && c >= '0' && c <= '9') {
+      let j = ind;
+      while (j < l.length && j - ind < 9 && l.charCodeAt(j) >= 48 && l.charCodeAt(j) <= 57) j++;
+      if (l[j] !== '.' && l[j] !== ')') return null;
+      tipo = 'ol'; num = parseInt(l.slice(ind, j), 10); fin = j + 1;
+    } else {
+      return null;
+    }
+    if (fin < l.length && l[fin] !== ' ' && l[fin] !== '\t') return null;
+    let k = fin;
+    while (k < l.length && (l[k] === ' ' || l[k] === '\t')) k++;
+    if (k >= l.length) return { ind: ind, tipo: tipo, num: num, resto: '', vacio: true, ancho: fin - ind + 1 };
+    const quitar = (k - fin) > 4 ? 1 : (k - fin);
+    return { ind: ind, tipo: tipo, num: num, resto: l.slice(fin + quitar), vacio: false, ancho: fin - ind + quitar };
+  }
+
+  /* ---------------------------------------------------------------- markdown: tablas */
+
+  /** Separa una fila por "|" sin escapar, quitando la barra inicial y final; devuelve como máximo `limite` celdas. */
+  function partirFila(linea, limite) {
+    const s = linea.trim();
+    let ini = 0, fin = s.length;
+    if (s.charCodeAt(0) === 124) ini = 1;
+    if (fin > ini && s.charCodeAt(fin - 1) === 124 && s.charCodeAt(fin - 2) !== 92) fin--;
+    const celdas = [];
+    let desde = ini;
+    for (let j = ini; j <= fin && celdas.length < limite; j++) {
+      if (j === fin || (s.charCodeAt(j) === 124 && s.charCodeAt(j - 1) !== 92)) {
+        celdas.push(s.slice(desde, j).replace(/\\\|/g, '|').trim());
+        desde = j + 1;
+      }
+    }
+    return celdas;
+  }
+
+  /** Alineaciones de una fila delimitadora (---, :--, --:, :-:) o null si la línea no lo es. */
+  function filaDelim(l) {
+    if (l.indexOf('|') === -1 || l.indexOf('-') === -1) return null;
+    const celdas = partirFila(l, MAX_COLS + 1);
+    if (!celdas.length || celdas.length > MAX_COLS) return null;
+    const al = [];
+    for (let i = 0; i < celdas.length; i++) {
+      const c = celdas[i];
+      if (!RE_DELIM.test(c)) return null;
+      const izq = c.charCodeAt(0) === 58, der = c.charCodeAt(c.length - 1) === 58;
+      al.push(izq && der ? 'center' : izq ? 'left' : der ? 'right' : '');
+    }
+    return al;
+  }
+
+  function intentarTabla(lineas, i, n) {
+    if (i + 1 >= n || lineas[i].indexOf('|') === -1) return null;
+    const al = filaDelim(lineas[i + 1]);
+    if (!al) return null;
+    const cab = partirFila(lineas[i], al.length + 1);
+    return cab.length === al.length ? { cab: cab, al: al } : null;
+  }
+
+  /* ---------------------------------------------------------------- markdown: bloques */
+
+  function crear(etiqueta) { creados++; return document.createElement(etiqueta); }
+
+  function interrumpe(lineas, j, n, perm, permCita) {
+    const l = lineas[j];
+    if (abrirCerca(l) || encabezado(l) || esRegla(l)) return true;
+    if (permCita && cita(l) !== null) return true;
+    if (perm) {
+      const m = marcador(l);
+      if (m && !m.vacio && m.ind <= 3 && (m.tipo === 'ul' || m.num === 1)) return true;
+    }
+    return l.indexOf('|') !== -1 && intentarTabla(lineas, j, n) !== null;
+  }
+
+  function bloqueParrafo(lineas, i, n, padre, perm, permCita) {
+    const partes = [lineas[i].trim()];
+    let j = i + 1;
+    while (j < n && NO_BLANCA.test(lineas[j]) && !interrumpe(lineas, j, n, perm, permCita)) { partes.push(lineas[j].trim()); j++; }
+    const p = crear('p');
+    inline(partes.join('\n'), p);
+    padre.appendChild(p);
+    return j;
+  }
+
+  function bloqueCodigo(lineas, i, n, padre, f) {
+    const cuerpo = [];
+    let j = i + 1;
+    while (j < n && !cierraCerca(lineas[j], f)) {
+      let l = lineas[j];
+      if (f.ind) { let k = 0; while (k < f.ind && l.charCodeAt(k) === 32) k++; if (k) l = l.slice(k); }
+      cuerpo.push(l);
+      j++;
+    }
+    const pre = crear('pre'), code = crear('code');
+    const lenguaje = /^\S+/.exec(f.info);
+    if (lenguaje && /^[A-Za-z0-9_+#.-]{1,30}$/.test(lenguaje[0])) code.className = 'language-' + lenguaje[0];
+    code.textContent = cuerpo.join('\n');
+    pre.appendChild(code);
+    padre.appendChild(pre);
+    return j < n ? j + 1 : j;
+  }
+
+  function bloqueCita(lineas, i, n, padre, ctx) {
+    const interior = [];
+    let j = i;
+    while (j < n) {
+      const q = cita(lineas[j]);
+      if (q === null) break;
+      interior.push(q);
+      j++;
+    }
+    const bq = crear('blockquote');
+    parsearBloques(interior, bq, { prof: ctx.prof + 1, citas: ctx.citas + 1 });
+    if (bq.firstChild || !recortado) padre.appendChild(bq);          // sin presupuesto ni para su contenido: no se deja una cita vacía
+    return j;
+  }
+
+  function itemLista(cuerpo, ctx) {
+    const li = crear('li');
+    let tarea = null;
+    const t = /^\[([ xX])\](?:[ \t]+|$)/.exec(cuerpo[0]);
+    if (t) { tarea = t[1] !== ' '; cuerpo[0] = cuerpo[0].slice(t[0].length); }
+    parsearBloques(cuerpo, li, { prof: ctx.prof + 1, citas: ctx.citas });
+    if (recortado && !li.firstChild) return null;                    // sin presupuesto ni para su contenido: no se deja un elemento vacío
+    const p = li.firstChild;
+    if (p && p.nodeName === 'P') {            // las listas son compactas: el primer párrafo va sin <p>
+      while (p.firstChild) li.insertBefore(p.firstChild, p);
+      li.removeChild(p);
+    }
+    if (tarea !== null) {
+      li.className = 'tarea';
+      const cb = crear('input');
+      cb.type = 'checkbox';
+      cb.disabled = true;
+      if (tarea) { cb.checked = true; cb.setAttribute('checked', ''); }
+      cb.setAttribute('aria-label', tarea ? 'Tarea completada' : 'Tarea pendiente');
+      li.insertBefore(cb, li.firstChild);
+    }
+    return li;
+  }
+
+  /**
+   * Una lista completa. Un elemento incluye las líneas siguientes sangradas al menos 2 espacios más que su
+   * marcador (y las en blanco entre ellas); lo que contiene se analiza de nuevo como bloques.
+   */
+  function bloqueLista(lineas, i, n, padre, ctx, m0) {
+    const lista = crear(m0.tipo);
+    if (m0.tipo === 'ol' && m0.num !== 1) lista.setAttribute('start', String(m0.num));
+    let m = m0, k = i, j = i + 1;
+    for (;;) {
+      const cuerpo = [m.resto];
+      let ultimo = 0;
+      j = k + 1;
+      while (j < n) {
+        const l = lineas[j];
+        if (!NO_BLANCA.test(l)) { cuerpo.push(''); j++; continue; }
+        const ind = sangria(l);
+        if (ind < m.ind + 2) break;
+        cuerpo.push(l.slice(Math.min(ind, m.ind + m.ancho)));
+        ultimo = cuerpo.length - 1;
+        j++;
+      }
+      cuerpo.length = ultimo + 1;
+      const item = itemLista(cuerpo, ctx);
+      if (item === null) break;
+      lista.appendChild(item);
+      if (j >= n || creados >= MAX_ELEMENTOS) break;               // sin presupuesto, parsearBloques corta lo que queda
+      const siguiente = lineas[j];
+      const m2 = esRegla(siguiente) ? null : marcador(siguiente);
+      if (m2 && m2.tipo === m0.tipo && m2.ind < m0.ind + 2) { m = m2; k = j; continue; }
+      break;
+    }
+    if (lista.firstChild) padre.appendChild(lista);
+    return j;
+  }
+
+  function celdaConAlineacion(etiqueta, texto, alineacion) {
+    const c = crear(etiqueta);
+    if (etiqueta === 'th') c.setAttribute('scope', 'col');
+    if (alineacion) c.style.textAlign = alineacion;
+    inline(texto, c);
+    return c;
+  }
+
+  function bloqueTabla(lineas, i, n, padre, tb, permCita) {
+    const ncols = tb.al.length;
+    const tabla = crear('table'), thead = crear('thead'), cabecera = crear('tr');
+    for (let c = 0; c < ncols; c++) cabecera.appendChild(celdaConAlineacion('th', tb.cab[c], tb.al[c]));
+    thead.appendChild(cabecera);
+    tabla.appendChild(thead);
+    let tbody = null;
+    let j = i + 2;
+    while (j < n) {
+      const l = lineas[j];
+      if (!NO_BLANCA.test(l) || l.indexOf('|') === -1 || abrirCerca(l) || encabezado(l) || esRegla(l) || (permCita && cita(l) !== null)) break;
+      if (creados >= MAX_ELEMENTOS) break;                          // sin presupuesto, parsearBloques corta lo que queda
+      const celdas = partirFila(l, ncols);
+      if (!tbody) { tbody = crear('tbody'); tabla.appendChild(tbody); }
+      const tr = crear('tr');
+      for (let c = 0; c < ncols; c++) tr.appendChild(celdaConAlineacion('td', celdas[c] || '', tb.al[c]));
+      tbody.appendChild(tr);
+      j++;
+    }
+    const envoltura = crear('div');
+    envoltura.className = 'tabla';
+    envoltura.appendChild(tabla);
+    padre.appendChild(envoltura);
+    return j;
+  }
+
+  function parsearBloques(lineas, padre, ctx) {
+    const n = lineas.length;
+    const perm = ctx.prof < MAX_PROF;
+    const permCita = perm && ctx.citas < MAX_CITAS;
+    let i = 0;
+    while (i < n) {
+      const l = lineas[i];
+      if (!NO_BLANCA.test(l)) { i++; continue; }
+      if (creados >= MAX_ELEMENTOS) { recortado = true; return; }   // queda texto sin dibujar
+      const cerca = abrirCerca(l);
+      if (cerca) { i = bloqueCodigo(lineas, i, n, padre, cerca); continue; }
+      const h = encabezado(l);
+      if (h) { const el = crear('h' + h.nivel); inline(h.txt, el); padre.appendChild(el); i++; continue; }
+      if (esRegla(l)) { padre.appendChild(crear('hr')); i++; continue; }
+      if (permCita && cita(l) !== null) { i = bloqueCita(lineas, i, n, padre, ctx); continue; }
+      if (perm) { const m = marcador(l); if (m) { i = bloqueLista(lineas, i, n, padre, ctx, m); continue; } }
+      const tb = intentarTabla(lineas, i, n);
+      if (tb) { i = bloqueTabla(lineas, i, n, padre, tb, permCita); continue; }
+      i = bloqueParrafo(lineas, i, n, padre, perm, permCita);
+    }
+  }
+
+  /* ---------------------------------------------------------------- markdown: texto en línea */
+
+  /**
+   * Destino y título de un enlace a partir del "(" que sigue a "]". Devuelve { url, titulo, fin } o null.
+   * Todos los recorridos están acotados (MAX_DESTINO, MAX_TITULO, 32 niveles de paréntesis).
+   */
+  function leerDestino(t, p) {
+    if (t.charCodeAt(p) !== 40) return null;
+    const n = t.length;
+    let j = p + 1;
+    while (j < n && (t[j] === ' ' || t[j] === '\t' || t[j] === '\n')) j++;
+    let url;
+    if (t[j] === '<') {
+      const ini = j + 1;
+      let e = ini;
+      while (e < n && e - ini < MAX_DESTINO && t[e] !== '>' && t[e] !== '<' && t[e] !== '\n') e++;
+      if (t[e] !== '>') return null;
+      url = t.slice(ini, e);
+      j = e + 1;
+    } else {
+      const ini = j;
+      let prof = 0;
+      while (j < n && j - ini < MAX_DESTINO) {
+        const c = t[j];
+        if (c === '\\' && j + 1 < n && PUNT_ASCII.indexOf(t[j + 1]) !== -1) { j += 2; continue; }
+        if (c === ' ' || c === '\t' || c === '\n') break;
+        if (c === '(') { if (++prof > 32) return null; }
+        else if (c === ')') { if (prof === 0) break; prof--; }
+        j++;
+      }
+      if (j - ini >= MAX_DESTINO) return null;
+      url = t.slice(ini, j).replace(RE_ESCAPE, '$1');
+    }
+    while (j < n && (t[j] === ' ' || t[j] === '\t' || t[j] === '\n')) j++;
+    let tit = null;
+    if (t[j] === '"' || t[j] === "'") {
+      const q = t[j], ini = j + 1;
+      let e = ini;
+      while (e < n && e - ini < MAX_TITULO && t[e] !== q) { if (t[e] === '\\' && e + 1 < n) e++; e++; }
+      if (t[e] !== q) return null;
+      tit = t.slice(ini, e).replace(RE_ESCAPE, '$1');
+      j = e + 1;
+      while (j < n && (t[j] === ' ' || t[j] === '\t' || t[j] === '\n')) j++;
+    }
+    return t[j] === ')' ? { url: url, titulo: tit, fin: j + 1 } : null;
+  }
+
+  /**
+   * Primera pasada del texto en línea: produce una lista doblemente enlazada de nodos
+   * { k: 't' texto | 'd' delimitador sobrante | 'br' | 'cod' | 'em' | 'strong' | 'del' | 'a' }.
+   * El énfasis sigue el algoritmo de delimitadores de CommonMark (con límites por clave para que
+   * sea lineal); los acentos graves se resuelven con un índice por longitud, no buscando hacia delante.
+   */
+  function analizarInline(t) {
+    const n = t.length;
+    const raiz = { k: 'raiz', prev: null, next: null };
+    const sentinela = { dprev: null, dsig: null };
+    const corchetes = [];
+    let cola = raiz, pend = '', dtop = sentinela;
+    let runs = null, porLen = null, ptr = null, rc = 0;
+
+    function vaciar() {
+      if (pend) { const nd = { k: 't', v: pend, prev: cola, next: null }; cola.next = nd; cola = nd; pend = ''; }
+    }
+    function enlazar(nd) { vaciar(); nd.prev = cola; nd.next = null; cola.next = nd; cola = nd; return nd; }
+    function quitarNodo(nd) { nd.prev.next = nd.next; if (nd.next) nd.next.prev = nd.prev; else cola = nd.prev; }
+    function quitarDelim(d) { d.dprev.dsig = d.dsig; if (d.dsig) d.dsig.dprev = d.dprev; else dtop = d.dprev; }
+
+    function compatibles(a, c) {
+      if (a.ch === '~') return true;
+      return !((a.cierra || c.abre) && (a.orig + c.orig) % 3 === 0 && !(a.orig % 3 === 0 && c.orig % 3 === 0));
+    }
+
+    function procesarEnfasis(fondo) {
+      const limites = new Map();
+      let cierre = fondo.dsig;
+      while (cierre) {
+        if (!cierre.cierra) { cierre = cierre.dsig; continue; }
+        const clave = cierre.ch + (cierre.abre ? 1 : 0) + (cierre.orig % 3);
+        const limite = limites.has(clave) ? limites.get(clave) : fondo;
+        let ap = cierre.dprev, hallado = null;
+        while (ap && ap !== fondo && ap !== limite) {
+          if (ap.abre && ap.ch === cierre.ch && compatibles(ap, cierre)) { hallado = ap; break; }
+          ap = ap.dprev;
+        }
+        if (!hallado) {
+          limites.set(clave, cierre.dprev);
+          const sig = cierre.dsig;
+          if (!cierre.abre) quitarDelim(cierre);
+          cierre = sig;
+          continue;
+        }
+        const uso = cierre.ch === '~' ? 2 : (hallado.n >= 2 && cierre.n >= 2 ? 2 : 1);
+        const tipo = cierre.ch === '~' ? 'del' : (uso === 2 ? 'strong' : 'em');
+        const primero = hallado.next, ultimo = cierre.prev;
+        hallado.dsig = cierre; cierre.dprev = hallado;     // los delimitadores intermedios salen de la pila
+        hallado.n -= uso; cierre.n -= uso;
+        const e = { k: tipo, ini: primero, prev: hallado, next: cierre };
+        primero.prev = null; ultimo.next = null;
+        hallado.next = e; cierre.prev = e;
+        if (hallado.n === 0) { quitarDelim(hallado); quitarNodo(hallado); }
+        if (cierre.n === 0) { const sig = cierre.dsig; quitarDelim(cierre); quitarNodo(cierre); cierre = sig; }
+      }
+      fondo.dsig = null;
+      dtop = fondo;
+    }
+
+    function prepararRuns() {
+      runs = []; porLen = new Map(); ptr = new Map();
+      let j = t.indexOf('`');
+      while (j !== -1) {
+        let e = j;
+        while (e < n && t.charCodeAt(e) === 96) e++;
+        const idx = runs.length, len = e - j;
+        runs.push({ pos: j, len: len });
+        let arr = porLen.get(len);
+        if (!arr) { arr = []; porLen.set(len, arr); ptr.set(len, 0); }
+        arr.push(idx);
+        j = t.indexOf('`', e);
+      }
+    }
+
+    let i = 0;
+    while (i < n) {
+      let j = i;
+      while (j < n) { const cc = t.charCodeAt(j); if (cc < 128 && ES_ESPECIAL[cc] === 1) break; j++; }
+      if (j > i) pend += t.slice(i, j);
+      if (j >= n) break;
+      i = j;
+      const c = t[i];
+
+      if (c === '\\') {
+        const sig = t[i + 1];
+        if (sig === '\n') { enlazar({ k: 'br' }); i += 2; }
+        else if (sig !== undefined && PUNT_ASCII.indexOf(sig) !== -1) { pend += sig; i += 2; }
+        else { pend += '\\'; i++; }
+
+      } else if (c === '\n') {
+        enlazar({ k: 'br' }); i++;
+
+      } else if (c === '`') {
+        if (!runs) prepararRuns();
+        let e = i;
+        while (e < n && t.charCodeAt(e) === 96) e++;
+        const len = e - i;
+        while (rc < runs.length && runs[rc].pos + runs[rc].len <= i) rc++;
+        const arr = porLen.get(len);
+        let cierre = -1;
+        if (arr) {
+          let p = ptr.get(len);
+          while (p < arr.length && arr[p] <= rc) p++;
+          ptr.set(len, p);
+          if (p < arr.length) cierre = runs[arr[p]].pos;
+        }
+        if (cierre === -1) { pend += t.slice(i, e); i = e; continue; }
+        let cont = t.slice(e, cierre);
+        // Un código en línea que solo tiene espacios no se dibuja: se queda como texto. Veinte mil <code> con un espacio dentro, uno junto a otro,
+        // cuestan segundos de maquetación aunque el tope de elementos no se alcance.
+        if (!NO_BLANCA.test(cont)) { pend += t.slice(i, e); i = e; continue; }
+        cont = cont.replace(/\n/g, ' ');
+        if (cont.length > 2 && cont.charCodeAt(0) === 32 && cont.charCodeAt(cont.length - 1) === 32 && NO_BLANCA.test(cont)) cont = cont.slice(1, -1);
+        enlazar({ k: 'cod', v: cont });
+        i = cierre + len;
+
+      } else if (c === '*' || c === '_' || c === '~') {
+        let e = i;
+        while (e < n && t[e] === c) e++;
+        const len = e - i;
+        if (c === '~' && len !== 2) { pend += t.slice(i, e); i = e; continue; }
+        const a = i > 0 ? cpAntes(t, i) : -1, d = e < n ? t.codePointAt(e) : -1;
+        const espA = a === -1 || esEspacioCp(a), espD = d === -1 || esEspacioCp(d);
+        const puntA = a !== -1 && esPuntCp(a), puntD = d !== -1 && esPuntCp(d);
+        const izq = !espD && (!puntD || espA || puntA);
+        const der = !espA && (!puntA || espD || puntD);
+        const abre = c === '_' ? (izq && (!der || puntA)) : izq;
+        const cierra = c === '_' ? (der && (!izq || puntD)) : der;
+        if (!abre && !cierra) { pend += t.slice(i, e); i = e; continue; }
+        const nd = enlazar({ k: 'd', ch: c, n: len, orig: len, abre: abre, cierra: cierra, dprev: dtop, dsig: null });
+        dtop.dsig = nd; dtop = nd;
+        i = e;
+
+      } else if (c === '[' || (c === '!' && t[i + 1] === '[')) {
+        const img = c === '!';
+        if (corchetes.length >= MAX_CORCHETES) { pend += img ? '![' : '['; i += img ? 2 : 1; continue; }
+        const nd = enlazar({ k: 't', v: img ? '![' : '[' });
+        corchetes.push({ nodo: nd, img: img, activo: true, fondo: dtop });
+        i += img ? 2 : 1;
+
+      } else if (c === '!') {
+        pend += '!'; i++;
+
+      } else if (c === ']') {
+        const op = corchetes.length ? corchetes.pop() : null;
+        if (!op || !op.activo) { pend += ']'; i++; continue; }
+        const dest = leerDestino(t, i + 1);
+        const url = dest ? urlSegura(dest.url) : null;
+        if (!url) { pend += ']'; i++; continue; }
+        vaciar();
+        procesarEnfasis(op.fondo);
+        const L = op.nodo, primero = L.next;
+        L.k = 'a'; L.url = url; L.titulo = dest.titulo; L.img = op.img; L.ini = primero;
+        if (primero) primero.prev = null;
+        L.next = null; cola = L;
+        if (!op.img) for (let q = 0; q < corchetes.length; q++) if (!corchetes[q].img) corchetes[q].activo = false;
+        i = dest.fin;
+
+      } else if (c === '<') {
+        RE_AUTO.lastIndex = i;
+        const m = RE_AUTO.exec(t);
+        const url = m ? urlSegura(m[1]) : null;
+        if (!url) { pend += '<'; i++; continue; }
+        enlazar({ k: 'a', url: url, titulo: null, img: false, ini: { k: 't', v: m[1], prev: null, next: null } });
+        i += m[0].length;
+
+      } else {
+        pend += c; i++;
+      }
+    }
+    vaciar();
+    procesarEnfasis(sentinela);
+    return raiz.next;
+  }
+
+  function crearEnlace(nodo) {
+    const a = crear('a');
+    a.setAttribute('href', nodo.url);
+    if (/^https?:/i.test(nodo.url)) { a.setAttribute('target', '_blank'); a.setAttribute('rel', 'noopener noreferrer'); }
+    if (nodo.titulo) a.setAttribute('title', nodo.titulo);
+    if (nodo.img) a.className = 'imagen';
+    if (!nodo.ini) a.textContent = nodo.url;
+    return a;
+  }
+
+  /** Segunda pasada: vuelca la lista de nodos al DOM, sin recursión (una pila propia) y aplanando lo muy anidado. */
+  function volcar(primero, raizDom) {
+    const pila = [];
+    let nodo = primero, dom = raizDom, prof = 0, enA = false, buf = '';
+    function salida() { if (buf) { dom.appendChild(document.createTextNode(buf)); buf = ''; } }
+    for (;;) {
+      if (!nodo) {
+        salida();
+        if (!pila.length) return;
+        const f = pila.pop();
+        nodo = f.sig; dom = f.dom; prof = f.prof; enA = f.enA;
+        continue;
+      }
+      switch (nodo.k) {
+        case 't': buf += nodo.v; nodo = nodo.next; break;
+        case 'd': buf += nodo.ch.repeat(nodo.n); nodo = nodo.next; break;
+        case 'br':
+          if (creados >= MAX_ELEMENTOS) buf += '\n'; else { salida(); dom.appendChild(crear('br')); }
+          nodo = nodo.next; break;
+        case 'cod':
+          if (creados >= MAX_ELEMENTOS) buf += nodo.v;
+          else { salida(); const c = crear('code'); c.textContent = nodo.v; dom.appendChild(c); }
+          nodo = nodo.next; break;
+        default: {                                   // em, strong, del, a
+          salida();
+          const aplanar = prof >= MAX_ENF || (nodo.k === 'a' && enA) || creados >= MAX_ELEMENTOS;
+          pila.push({ sig: nodo.next, dom: dom, prof: prof, enA: enA });
+          if (!aplanar) {
+            const el = nodo.k === 'a' ? crearEnlace(nodo) : crear(nodo.k);
+            dom.appendChild(el);
+            dom = el; prof++;
+            if (nodo.k === 'a') enA = true;
+          }
+          nodo = nodo.ini;
+        }
+      }
+    }
+  }
+
+  function inline(texto, destino) {
+    if (!texto) return;
+    if (!RE_SIMPLE.test(texto)) { destino.appendChild(document.createTextNode(texto)); return; }
+    volcar(analizarInline(texto), destino);
+  }
+
+  /**
+   * Aplica el presupuesto de rachas exóticas (ver MAX_RACHAS_LINEA): una línea con demasiadas queda cortada justo antes de la que no cabe, y si
+   * la suma del coste de todas las líneas se pasa, el documento termina ahí. Cambia `lineas` y devuelve true si recortó algo.
+   */
+  function acotarExoticos(lineas) {
+    let coste = 0, recorta = false;
+    for (let i = 0; i < lineas.length; i++) {
+      const l = lineas[i];
+      RE_EXOTICO.lastIndex = 0;
+      let m = RE_EXOTICO.exec(l), rachas = 0;
+      while (m !== null) {
+        rachas++;
+        if (rachas > MAX_RACHAS_LINEA) { lineas[i] = l.slice(0, m.index); recorta = true; rachas = MAX_RACHAS_LINEA; break; }
+        if (coste + rachas * rachas > MAX_COSTE_EXOTICOS) { lineas[i] = l.slice(0, m.index); lineas.length = i + 1; return true; }
+        m = RE_EXOTICO.exec(l);
+      }
+      coste += rachas * rachas;
+    }
+    return recorta;
+  }
+
+  /**
+   * Convierte markdown en un <div class="md"> nuevo. Nunca usa innerHTML con texto del usuario.
+   * Crea como mucho unos MAX_ELEMENTOS elementos: si el texto da para más, lo que queda fuera se dice en un
+   * párrafo final (el texto entero sigue en el editor).
+   */
+  function renderMarkdown(texto) {
+    creados = 0; recortado = false;
+    const raiz = crear('div');
+    raiz.className = 'md';
+    let t = aTexto(texto);
+    if (!t) return raiz;
+    if (t.indexOf('\u0000') !== -1) t = t.replace(/\u0000/g, '\u{FFFD}');
+    let lineas = t.split(/\r\n|\r|\n/);
+    if (RE_EXOTICO_ALGUNO.test(t) && acotarExoticos(lineas)) recortado = true;
+    if (t.indexOf('\t') !== -1) lineas = lineas.map(expandirTabs);
+    parsearBloques(lineas, raiz, { prof: 0, citas: 0 });
+    if (recortado) {
+      const aviso = document.createElement('p');
+      aviso.className = 'md__recorte';
+      aviso.textContent = 'Vista previa recortada: esta nota es demasiado larga, o tiene demasiados emojis o caracteres especiales, para mostrarla completa. El texto entero sigue en el editor.';
+      raiz.appendChild(aviso);
+    }
+    return raiz;
+  }
+
+  window.Ceiba = Object.freeze({
+    escapar: escapar,
+    titulo: titulo,
+    extracto: extracto,
+    normalizar: normalizar,
+    coincide: coincide,
+    tiempoRelativo: tiempoRelativo,
+    fechaCompleta: fechaCompleta,
+    renderMarkdown: renderMarkdown,
+    urlSegura: urlSegura,
+    validarImportacion: validarImportacion,
+    nombreArchivo: nombreArchivo
+  });
+})();
+</script>
+
+<script>
+/* ==========================================================================
+   Ceiba: capa de aplicación (estado, almacenamiento, interfaz).
+   Usa solo las funciones puras de window.Ceiba; no expone nada en window.
+
+   Estado y persistencia (spec sección 5):
+   - Notas en ceiba:notas:v1 como { version: 1, notas: [{ id, texto, creada, editada }], activa: id }.
+   - Guardado con 300 ms de pausa al escribir; inmediato al crear o cambiar de nota; y al ocultar la
+     pestaña (visibilitychange) o salir (pagehide).
+   - Toda lectura y escritura va en try/catch. Un valor roto no se pisa: se copia a
+     ceiba:notas:v1:corrupto:<ts>, se avisa y se arranca limpio. Si ni siquiera se puede copiar, no se escribe.
+   - Sin almacenamiento o con la cuota llena la app sigue en memoria y lo dice ("Sin guardar").
+   - La fecha de edición solo cambia cuando el texto cambia de verdad.
+
+   Copia de seguridad, tema, plan y varias pestañas (Task 5):
+   - Exportar todo descarga ceiba-notas-AAAA-MM-DD.json; Importar valida con Ceiba.validarImportacion (5 MB, 5.000
+     notas, ids saneados) y combina por id: gana la edición más reciente. Si el resultado pasara de 5.000 notas se
+     rechaza entero (nada cambia). El informe dice cuántas notas se añadieron, actualizaron y omitieron.
+   - Tema: sistema, claro u oscuro en ceiba:prefs:v1 (la misma clave que la landing); ?plan=&ciclo= válidos se guardan
+     ahí y se borran de la URL. El plan es solo un indicador: no restringe nada ni cobra nada.
+   - Si otra pestaña cambia las notas (evento storage) se avisa con "Recargar" y no se toca lo que se está escribiendo.
+   - En pantallas con teclado virtual la app mide window.visualViewport y se ajusta a la zona visible.
+   ========================================================================== */
+(function () {
+  'use strict';
+
+  const C = window.Ceiba;
+  const CLAVE_NOTAS = 'ceiba:notas:v1';
+  const ESPERA_GUARDADO = 300;          // ms de pausa antes de escribir en el almacenamiento
+  const REFRESCO_TIEMPOS = 60000;       // ms entre refrescos de las etiquetas relativas
+  const MAX_CONSULTA_VISIBLE = 60;      // caracteres de la consulta que se muestran en "sin resultados"
+  const MAX_MARCAS = 40;                // coincidencias resaltadas por línea, como máximo
+  const MAX_CONSULTA = 200;             // caracteres de la consulta que se usan (el campo también lo limita)
+  const CLAVE_PREFS = 'ceiba:prefs:v1'; // compartida con la landing: tema, plan, ciclo y foco
+  const ESPERA_DESHACER = 8000;         // ms que se puede deshacer una eliminación
+  const BORDE_ASOMA = 8;                // px del borde de la ventana que asoman las barras en modo enfoque
+  const MAX_NOTAS = 5000;               // máximo de notas del cuaderno: al crear, al importar y al deshacer (leer lo guardado no lo aplica)
+  const MAX_LINEAS_NOTA = 50000;        // más líneas que esto vuelven lentísima el área de texto: esa nota no se abre sola ni se importa
+  const MAX_COSTE_RACHAS = 64e6;        // tope del coste de maquetación de una línea con emojis o caracteres especiales alternados (ver esPesada): equivale a 8.000 rachas en una sola línea
+  const CLAVE_ABRIENDO = 'ceiba:abriendo:v1';   // marca "se está abriendo esta nota": si la pestaña se cuelga maquetándola, queda escrita y la próxima vez esa nota no se abre sola
+  const UMBRAL_MARCA = 20000;           // caracteres desde los que se escribe la marca: una nota más corta no puede colgar la pestaña
+  const MAX_BYTES_IMPORTACION = 5 * 1024 * 1024;   // tamaño máximo del archivo que se importa
+  const UMBRAL_TECLADO = 100;           // px que debe tapar la interfaz del sistema para tratarla como teclado virtual
+  const PLANES = { semilla: 'Semilla', brote: 'Brote', bosque: 'Bosque' };   // planes de demostración que acepta ?plan=
+  const CICLOS = { mensual: 'mensual', anual: 'anual' };                     // ciclos que acepta ?ciclo=
+
+  /* ---------------------------------------------------------------- utilidades */
+
+  const $ = id => document.getElementById(id);
+  function crear(etiqueta, clase, texto) {
+    const e = document.createElement(etiqueta);
+    if (clase) e.className = clase;
+    if (texto !== undefined) e.textContent = texto;
+    return e;
+  }
+  function numero(n) { return n.toLocaleString('es'); }
+  function plural(n, uno, varios) { return numero(n) + ' ' + (n === 1 ? uno : varios); }
+  function esVacia(texto) { return !/\S/.test(texto); }
+  /* Lo que vuelve lenta la maquetación del área de texto no son solo las líneas: en una misma línea, cada cambio entre texto y emoji (o cada
+     carácter de control o U+FFFD, que no tiene glifo) abre una racha de fuente nueva y el coste de la línea crece con el cuadrado de las rachas
+     (30.000 repeticiones de "emoji + espacio" en una línea tardan unos 12 s; con un salto de línea entre cada una, nada). */
+  const RE_PESO = /\r\n|[\r\n]|[\p{Extended_Pictographic}\p{Emoji_Modifier}\p{Regional_Indicator}\u200D\uFE0F]+|[\uFFFD\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F-\u009F]/gu;
+
+  /**
+   * ¿Es una nota que no se debe abrir sola ni importar? Si tiene MAX_LINEAS_NOTA saltos de línea o más (el salto puede ser \n, \r o \r\n: el
+   * área de texto los trata igual) o si el coste de sus rachas pasa de MAX_COSTE_RACHAS (suma, por líneas, de rachas al cuadrado).
+   * Para en cuanto lo sabe: no recorre un texto enorme entero.
+   */
+  function esPesada(texto) {
+    let saltos = 0, rachas = 0, coste = 0, m;
+    RE_PESO.lastIndex = 0;
+    while ((m = RE_PESO.exec(texto)) !== null) {
+      const c = m[0].charCodeAt(0);
+      if (c === 10 || c === 13) {
+        if (++saltos >= MAX_LINEAS_NOTA) return true;
+        coste += rachas * rachas; rachas = 0;
+      } else {
+        rachas++;
+        if (coste + rachas * rachas > MAX_COSTE_RACHAS) return true;
+      }
+    }
+    return false;
+  }
+
+  const dom = {
+    app: $('app'), lateral: $('lateral'), principal: $('contenido'),
+    nueva: $('nueva'), busqueda: $('busqueda'), limpiar: $('limpiar'), cuenta: $('cuenta'),
+    lista: $('lista'), sinResultados: $('sin-resultados'), sinResultadosTitulo: $('sin-resultados-titulo'),
+    borrarBusqueda: $('borrar-busqueda'), listaVacia: $('lista-vacia'),
+    volver: $('volver'), barra: $('barra'), acciones: $('acciones'), modo: $('modo'), eliminar: $('eliminar'),
+    lienzo: $('lienzo'), editor: $('editor'), vista: $('vista'),
+    vacio: $('vacio'), vacioTitulo: $('vacio-titulo'), vacioTexto: $('vacio-texto'), primera: $('primera'),
+    estado: $('estado'), estGuardado: $('est-guardado'), estPalabras: $('est-palabras'),
+    estCaracteres: $('est-caracteres'), estFecha: $('est-fecha'), enfoque: $('enfoque'),
+    avisos: $('avisos'), banda: $('avisos-banda'), flotantes: $('avisos-flotantes'), vivo: $('vivo'),
+    atajos: $('atajos'), ayuda: $('ayuda'), cerrarAyuda: $('cerrar-ayuda'),
+    tema: $('tema'), temaTexto: $('tema-texto'), temaIconos: document.querySelectorAll('#tema [data-tema]'),
+    plan: $('plan'), planNombre: $('plan-nombre'),
+    respaldo: $('respaldo'), respaldoDialogo: $('respaldo-dialogo'), exportarTodo: $('exportar-todo'), importar: $('importar'),
+    archivo: $('archivo-importar'), cerrarRespaldo: $('cerrar-respaldo'), respaldoError: $('respaldo-error'),
+    exportarNota: $('exportar-nota'),
+    copiaDanada: $('copia-danada'), descargarDanada: $('descargar-danada'),
+    lateralAlternar: $('lateral-alternar'), lateralTexto: $('lateral-texto'),
+    salto: document.querySelector('.salto'),
+  };
+  const raiz = document.documentElement;
+  const movil = window.matchMedia('(max-width: 599px)');
+  const colapsable = window.matchMedia('(min-width: 600px) and (max-width: 899px), (min-width: 900px) and (max-height: 520px)');   // aquí la barra lateral se puede ocultar con un botón
+
+  /* ---------------------------------------------------------------- nota de bienvenida */
+
+  // Contenido real, no datos de relleno. Describe solo lo que la aplicación hace hoy.
+  const BIENVENIDA = [
+    '# Bienvenida a Ceiba',
+    '',
+    'Esta es tu primera nota y es de verdad: puedes escribir encima, cambiarle el título o borrar todo su contenido. Ceiba es un cuaderno para escribir en markdown, sin ruido.',
+    '',
+    '## Ver el resultado',
+    '',
+    'Pulsa `Alt+P` para abrir la vista previa: esta misma nota se muestra con su formato (títulos, listas, citas). Vuelve a pulsarlo para seguir escribiendo; el cursor queda donde estaba.',
+    '',
+    '## Lo básico',
+    '',
+    '- La primera línea de cada nota es su título. Cámbiala y la lista de la izquierda se actualiza.',
+    '- Todo se guarda solo, en este navegador. No hay cuentas ni servidores.',
+    '- La lista se ordena por la última edición y muestra cuándo fue.',
+    '- El campo de búsqueda filtra mientras escribes. No distingue mayúsculas ni tildes y pide que aparezcan todas las palabras.',
+    '',
+    '## Cómo se escribe en markdown',
+    '',
+    'Las marcas son signos de puntuación comunes:',
+    '',
+    '- `# Título` hace un título; con más almohadillas, uno más pequeño.',
+    '- `**negrita**`, `*cursiva*` y `~~tachado~~` dan énfasis.',
+    '- Un guion al inicio de la línea hace una lista, y `1.` la hace numerada.',
+    '- `- [ ]` y `- [x]` marcan tareas pendientes y hechas.',
+    '- Un signo `>` abre una cita.',
+    '- Tres acentos graves abren y cierran un bloque de código.',
+    '',
+    'Un ejemplo de tareas:',
+    '',
+    '- [x] Abrir Ceiba',
+    '- [ ] Escribir mi primera nota',
+    '- [ ] Encontrarla con el campo de búsqueda',
+    '',
+    '> Un cuaderno quieto: escribe ahora, ordena después.',
+    '',
+    '## Atajos',
+    '',
+    '- `Alt+N` crea una nota nueva y `Ctrl+K` (o `/`) busca entre todas.',
+    '- `Esc` vuelve del editor a la lista; las flechas la recorren y `Enter` abre la nota.',
+    '- `Alt+Retroceso` elimina la nota desde la lista y `Alt+Z` la recupera durante 8 segundos.',
+    '- `?` muestra todos los atajos.',
+    '',
+    'En Mac, Alt es la tecla Opción y Ctrl es Cmd.',
+    '',
+    '## Antes de seguir',
+    '',
+    'Tus notas viven solo en el navegador de este dispositivo. Si borras los datos del sitio, se pierden.',
+  ].join('\n');
+
+  /* ---------------------------------------------------------------- estado */
+
+  let notas = [];                 // Nota[]; cada una es exactamente { id, texto, creada, editada }
+  let activaId = null;
+  let orden = [];                 // ids en el orden aplicado a la lista (se actualiza en pausas y al cambiar de nota)
+  let consulta = '';
+  let palabras = [];              // palabras de la consulta, normalizadas
+  let estadoGuardado = 'guardado';   // 'guardado' | 'guardando' | 'sin-guardar'
+  let temporizador = null;        // pausa de escritura pendiente
+  let sucio = false;              // hay cambios que todavía no se han escrito
+  let fallo = false;              // la última escritura falló
+  let escrituraBloqueada = false; // se conserva un valor roto que no se pudo copiar: no se escribe nada
+  let avisoAlmacenamiento = null;
+  let papelera = [];              // eliminaciones que todavía se pueden deshacer; la última es la que muestra el aviso
+  let avisoDeshacer = null;       // { quitar, caja } del aviso con "Deshacer"
+  let enVista = false;            // true: se ve el markdown renderizado en vez del área de texto
+  let memoriaVista = null;        // { id, ini, fin, dir, top } del editor al pasar a la vista previa
+  const focoPrevio = new Map();   // diálogo -> elemento que tenía el foco al abrirlo
+  let tema = 'sistema';           // 'sistema' | 'claro' | 'oscuro'
+  let planActual = null;          // { plan, ciclo } del plan de demostración, o null
+  let avisoOtraPestana = null;    // aviso "otra pestaña cambió las notas" mientras siga a la vista
+  let soltarEscritura = false;    // la página se está recargando a propósito: no volcar nada más al cerrarla
+  let tecladoAbierto = false;     // el script ha reducido la app a la zona que deja libre el teclado virtual
+  let altoVentana = window.innerHeight;   // para notar cuándo el documento se acorta (teclado que redimensiona la página)
+  let ultimoEscrito = null;       // texto exacto de ceiba:notas:v1 que esta pestaña leyó o escribió por última vez
+  let ajenas = new Map();         // notas que otra pestaña guardó y esta no tiene (o tiene más viejas): se conservan al guardar
+  const eliminadasAqui = new Set();   // ids que se eliminaron en esta pestaña: no deben volver desde lo que guardó otra
+  let instantanea = new Map();    // id -> editada de las notas tal como esta pestaña las leyó o escribió por última vez en el almacenamiento
+  const eliminadasAjenas = new Map(); // id -> editada: notas que otra pestaña eliminó y que aquí no se han vuelto a editar; no se reescriben
+  let avisoTope = null;           // aviso "has llegado a las 5.000 notas" mientras siga a la vista
+  let revelacionPendiente = false;        // hay un revelarCursorDiferido esperando al siguiente fotograma
+
+  function ahora() { return Date.now(); }
+  function notaPorId(id) { for (let i = 0; i < notas.length; i++) if (notas[i].id === id) return notas[i]; return null; }
+  function notaActiva() { return activaId === null ? null : notaPorId(activaId); }
+
+  function nuevoId() {
+    let id;
+    do {
+      let azar;
+      try { const a = new Uint32Array(2); window.crypto.getRandomValues(a); azar = a[0].toString(36) + a[1].toString(36); }
+      catch (e) { azar = Math.random().toString(36).slice(2, 12); }
+      id = ('n' + ahora().toString(36) + azar).slice(0, 64);
+    } while (notaPorId(id) || papelera.some(r => r.nota.id === id));   // tampoco se reutiliza el id de una nota que aún se puede restaurar
+    return id;
+  }
+  function nuevaNota(texto) {
+    const t = ahora();
+    return { id: nuevoId(), texto: texto, creada: t, editada: t };
+  }
+
+  /** Orden de la lista: edición más reciente primero; desempates estables por creación e id. */
+  function comparar(a, b) {
+    return (b.editada - a.editada) || (b.creada - a.creada) || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
+  }
+  function calcularOrden() { return notas.slice().sort(comparar).map(n => n.id); }
+  function mismoOrden(a, b) {
+    if (a.length !== b.length) return false;
+    for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) return false;
+    return true;
+  }
+
+  /* ---------------------------------------------------------------- almacenamiento */
+
+  function almacen() { try { return window.localStorage || null; } catch (e) { return null; } }
+
+  function leerClave(clave) {
+    const a = almacen();
+    if (!a) return { accesible: false, valor: null };
+    try { return { accesible: true, valor: a.getItem(clave) }; }
+    catch (e) { return { accesible: false, valor: null }; }
+  }
+  function escribirClave(clave, valor) {
+    const a = almacen();
+    if (!a) return false;
+    try { a.setItem(clave, valor); return true; } catch (e) { return false; }
+  }
+  function quitarClave(clave) {
+    const a = almacen();
+    if (!a) return;
+    try { a.removeItem(clave); } catch (e) { /* sin almacenamiento: no hay marca que quitar */ }
+  }
+
+  /** Preferencias compartidas con la landing (ceiba:prefs:v1). Un valor roto se lee como vacío: no guarda datos que perder. */
+  function leerPrefs() {
+    const r = leerClave(CLAVE_PREFS);
+    if (!r.accesible || r.valor === null) return {};
+    try {
+      const p = JSON.parse(r.valor);
+      return p !== null && typeof p === 'object' && !Array.isArray(p) ? p : {};
+    } catch (e) { return {}; }
+  }
+  /** Cambia una o varias claves de las preferencias y conserva las demás (tema, plan, ciclo, foco...). */
+  function guardarPrefs(cambios) {
+    const p = leerPrefs();
+    for (const k of Object.keys(cambios)) p[k] = cambios[k];
+    escribirClave(CLAVE_PREFS, JSON.stringify(p));
+  }
+  function guardarPref(clave, valor) { const c = {}; c[clave] = valor; guardarPrefs(c); }
+
+  /** Copia el valor roto a ceiba:notas:v1:corrupto:<ts>. Devuelve la clave de la copia o null si no se pudo. */
+  function conservarCopia(bruto) {
+    const clave = CLAVE_NOTAS + ':corrupto:' + ahora();
+    return escribirClave(clave, bruto) ? clave : null;
+  }
+
+  /**
+   * Lee y valida lo guardado. Devuelve { notas, activa, primeraVez, guardar, accesible, avisos }.
+   * Un esquema roto no se repara en silencio: se conserva una copia y se informa.
+   */
+  function cargar() {
+    const r = leerClave(CLAVE_NOTAS);
+    const res = { notas: [], activa: null, primeraVez: false, guardar: false, accesible: r.accesible, avisos: [], bruto: r.valor };
+    // Marca de apertura: si sigue escrita, la vez anterior una nota no terminó de cargarse (la pestaña se colgó maquetándola). Se lee y se borra
+    // aquí, una sola vez: así esa nota se puede abrir a mano más tarde (y si vuelve a colgar, la marca se vuelve a escribir).
+    const marca = leerClave(CLAVE_ABRIENDO);
+    const colgada = marca.accesible && marca.valor !== null ? marca.valor : null;
+    if (colgada !== null) quitarClave(CLAVE_ABRIENDO);
+    if (!r.accesible || r.valor === null) { res.primeraVez = true; res.guardar = true; return res; }
+
+    let json = null, legible = true;
+    try { json = JSON.parse(r.valor); } catch (e) { legible = false; }
+    // Sin tope de notas: el de 5.000 es de la importación. Un cuaderno largo que la propia app escribió no es un cuaderno dañado.
+    const v = legible ? C.validarImportacion(json, { limite: Infinity }) : { error: 'ilegible' };
+
+    if (v.error || v.omitidas > 0) {
+      const dañadas = v.error ? null : v.omitidas;
+      const copia = conservarCopia(r.valor);
+      if (copia) {
+        res.avisos.push({
+          error: false,
+          texto: dañadas === null
+            ? 'Las notas guardadas estaban dañadas y no se pudieron leer. Se conservó una copia sin cambios en «' + copia + '» y se empezó con un cuaderno limpio.'
+            : 'Se omitieron ' + plural(dañadas, 'nota dañada', 'notas dañadas') + ' al leer lo guardado. Se conservó una copia sin cambios en «' + copia + '».',
+        });
+      } else {
+        escrituraBloqueada = true;   // no hay copia: escribir ahora destruiría el único ejemplar de los datos
+        res.avisos.push({
+          error: true,
+          texto: 'Los datos guardados estaban dañados y no se pudo conservar una copia. Los cambios no se están guardando para no borrarlos. Libera espacio en el navegador y recarga la página.',
+        });
+      }
+      if (v.error) { res.primeraVez = true; res.guardar = !!copia; return res; }
+      res.guardar = !!copia;
+    }
+
+    res.notas = v.notas;
+    const guardada = legible && json && Object.prototype.hasOwnProperty.call(json, 'activa') ? json.activa : null;
+    let activa = null;
+    for (let i = 0; i < res.notas.length; i++) if (res.notas[i].id === guardada) activa = guardada;
+    if (activa === null && res.notas.length) activa = res.notas.slice().sort(comparar)[0].id;
+    if (activa !== null && activa === colgada) {    // la que se estaba abriendo cuando se colgó la pestaña: no se vuelve a abrir sola
+      const otra = res.notas.slice().sort(comparar).find(function (n) { return n.id !== colgada; });
+      res.avisos.push({ error: false, texto: 'La nota «' + C.titulo(res.notas.find(function (n) { return n.id === colgada; }).texto) + '» no se abrió sola porque la vez anterior no terminó de cargarse. Sigue en la lista: ábrela solo si la necesitas.' });
+      activa = otra ? otra.id : null;
+      res.guardar = true;                           // la nota activa guardada cambia: si no, la siguiente recarga volvería a abrir la colgada
+    }
+    if (activa !== null) {                          // una nota pesada (cientos de miles de líneas, miles de emojis en una línea) no se abre sola: congelaría el arranque
+      const elegida = res.notas.find(function (n) { return n.id === activa; });
+      if (esPesada(elegida.texto)) {
+        const liviana = res.notas.slice().sort(comparar).find(function (n) { return !esPesada(n.texto); });
+        if (liviana) {
+          res.avisos.push({ error: false, texto: 'La nota «' + C.titulo(elegida.texto) + '» es demasiado pesada para abrirla sola (más de 50.000 líneas o demasiados emojis o símbolos en una misma línea): el editor se volvería muy lento. Sigue en la lista: ábrela solo si la necesitas.' });
+          activa = liviana.id;
+        } else {
+          res.avisos.push({ error: false, texto: 'Ninguna nota se abrió sola porque todas son demasiado largas o pesadas. Siguen en la lista: ábrelas solo si las necesitas.' });
+          activa = null;
+        }
+        res.guardar = true;
+      }
+    }
+    res.activa = activa;
+    return res;
+  }
+
+  function fijarGuardado(valor) {
+    estadoGuardado = valor;
+    dom.estGuardado.dataset.estado = valor;
+    dom.estGuardado.textContent = valor === 'guardado' ? 'Guardado' : valor === 'guardando' ? 'Guardando' : 'Sin guardar';
+  }
+
+  /**
+   * Si otra pestaña escribió ceiba:notas:v1 desde la última vez que esta lo leyó o escribió, apunta en `ajenas` sus notas que
+   * esta pestaña no tiene (o tiene más viejas), salvo las que se eliminaron aquí. Así guardar no borra lo que escribió la otra.
+   */
+  function sincronizarAjenas() {
+    const r = leerClave(CLAVE_NOTAS);
+    if (!r.accesible || r.valor === null || r.valor === ultimoEscrito) return;
+    let json;
+    try { json = JSON.parse(r.valor); } catch (e) { return; }
+    const v = C.validarImportacion(json, { limite: Infinity });
+    if (v.error) return;
+    const propias = new Map();
+    for (let i = 0; i < notas.length; i++) propias.set(notas[i].id, notas[i]);
+    ajenas = new Map();
+    const guardadas = new Set();
+    for (let i = 0; i < v.notas.length; i++) {
+      const g = v.notas[i], mia = propias.get(g.id);
+      guardadas.add(g.id);
+      if (eliminadasAqui.has(g.id)) continue;
+      if (mia === undefined || g.editada > mia.editada) ajenas.set(g.id, g);
+    }
+    // Una nota que esta pestaña ya había leído o escrito y que ya no está en lo guardado la eliminó la otra pestaña: no se reescribe (salvo que
+    // aquí se edite después). Sin esto, bastaba con cambiar de nota en la pestaña desactualizada para devolver al almacenamiento lo eliminado.
+    propias.forEach(function (mia, id) {
+      if (guardadas.has(id)) { eliminadasAjenas.delete(id); return; }
+      const vista = instantanea.get(id);
+      if (vista !== undefined && mia.editada <= vista && !eliminadasAjenas.has(id)) eliminadasAjenas.set(id, vista);
+    });
+  }
+
+  function mapaEditadas(lista) {
+    const m = new Map();
+    for (let i = 0; i < lista.length; i++) m.set(lista[i].id, lista[i].editada);
+    return m;
+  }
+
+  /**
+   * Lo que se escribe: las notas de esta pestaña más las ajenas, menos las que la otra pestaña eliminó y aquí no se tocaron desde entonces;
+   * de una misma nota gana la edición más reciente (con empate, la de aquí).
+   */
+  function notasAGuardar() {
+    const salida = eliminadasAjenas.size ? notas.filter(function (n) {
+      const e = eliminadasAjenas.get(n.id);
+      if (e === undefined) return true;
+      if (n.editada > e) { eliminadasAjenas.delete(n.id); return true; }   // se editó aquí después de que la otra pestaña la eliminara: la edición se conserva
+      return false;
+    }) : notas.slice();
+    if (!ajenas.size) return salida;
+    const sitio = new Map();
+    for (let i = 0; i < salida.length; i++) sitio.set(salida[i].id, i);
+    ajenas.forEach(function (a, id) {
+      const i = sitio.get(id);
+      if (i === undefined) salida.push(a);
+      else if (a.editada > salida[i].editada) salida[i] = a;
+    });
+    return salida;
+  }
+
+  /** Escribe todo el estado ahora. Devuelve true si quedó guardado. */
+  function guardarAhora() {
+    if (temporizador !== null) { clearTimeout(temporizador); temporizador = null; }
+    let ok = false;
+    if (!escrituraBloqueada) {
+      try {
+        sincronizarAjenas();
+        const aEscribir = notasAGuardar();
+        const texto = JSON.stringify({ version: 1, notas: aEscribir, activa: activaId });
+        ok = escribirClave(CLAVE_NOTAS, texto);
+        if (ok) { ultimoEscrito = texto; instantanea = mapaEditadas(aEscribir); }
+      } catch (e) { ok = false; }
+    }
+    if (ok) {
+      sucio = false;
+      if (fallo) { fallo = false; if (avisoAlmacenamiento) { avisoAlmacenamiento.quitar(); avisoAlmacenamiento = null; } }
+      fijarGuardado('guardado');
+    } else {
+      sucio = true;
+      if (!fallo) {
+        fallo = true;
+        if (!escrituraBloqueada && !avisoAlmacenamiento) {
+          avisoAlmacenamiento = avisar('Los cambios no se están guardando: el almacenamiento del navegador no está disponible o está lleno. Lo que escribas se perderá al cerrar la pestaña.', {
+            error: true, fijo: true,
+            accion: { texto: 'Copia de seguridad', titulo: 'Abrir la copia de seguridad: exportar todas las notas a un archivo', alActivar: function () { abrirRespaldo(); } },
+          });
+        }
+      }
+      fijarGuardado('sin-guardar');
+    }
+    return ok;
+  }
+
+  function programarGuardado() {
+    sucio = true;
+    fijarGuardado(fallo || escrituraBloqueada ? 'sin-guardar' : 'guardando');
+    if (temporizador !== null) clearTimeout(temporizador);
+    temporizador = setTimeout(alHacerPausa, ESPERA_GUARDADO);
+  }
+
+  function alHacerPausa() {
+    temporizador = null;
+    guardarAhora();
+    refrescarLista(false);
+  }
+
+  function volcarPendiente() { if (soltarEscritura) return; if (temporizador !== null || sucio) guardarAhora(); }
+
+  /* ---------------------------------------------------------------- avisos y anuncios */
+
+  let alterna = false;
+  /** Única región viva de la página: contador de resultados y avisos. */
+  function anunciar(texto, forzar) {
+    const actual = dom.vivo.textContent.replace(/ /g, '');
+    if (!forzar && actual === texto) return;
+    alterna = !alterna;
+    dom.vivo.textContent = texto ? texto + (forzar && alterna ? ' ' : '') : '';
+  }
+
+  /**
+   * Aviso visible. El texto se anuncia por la región viva (el aviso no es una segunda región); los botones no.
+   * Opciones: error, sinCerrar (sin botón de cerrar), silencioso (no se anuncia), anuncio (texto distinto para
+   * la región viva), autoCerrar (ms; solo para confirmaciones, nunca para errores ni acciones) y
+   * accion { texto, atajo, titulo, alActivar } para un botón de texto como "Deshacer", y fijo (el aviso describe un estado y
+   * va en la banda del diseño en vez de flotar sobre el panel).
+   * Si se quita con el foco dentro (Cerrar con el teclado o cierre automático), el foco vuelve a donde estaba cuando salió el aviso.
+   * Devuelve { quitar, caja }.
+   */
+  function avisar(texto, opciones) {
+    const o = opciones || {};
+    const previo = document.activeElement;
+    const caja = crear('div', 'aviso' + (o.error ? ' aviso--error' : ''));
+    caja.appendChild(crear('p', 'aviso__texto', texto));
+    if (o.accion) {
+      const boton = crear('button', 'aviso__accion', o.accion.texto);
+      boton.type = 'button';
+      if (o.accion.atajo) boton.setAttribute('aria-keyshortcuts', o.accion.atajo);
+      if (o.accion.titulo) boton.title = o.accion.titulo;
+      boton.addEventListener('click', o.accion.alActivar);
+      caja.appendChild(boton);
+    }
+    const quitar = function () {
+      if (!caja.parentNode) return;
+      const conFoco = caja.contains(document.activeElement);
+      caja.parentNode.removeChild(caja);
+      if (conFoco) devolverFoco(previo);
+    };
+    if (!o.sinCerrar) {
+      const cerrar = crear('button', 'boton-icono');
+      cerrar.type = 'button';
+      cerrar.setAttribute('aria-label', 'Cerrar aviso');
+      cerrar.innerHTML = '<svg class="icono" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M6 6l12 12M18 6L6 18"/></svg>';
+      cerrar.addEventListener('click', function () { quitar(); if (avisoAlmacenamiento && avisoAlmacenamiento.caja === caja) avisoAlmacenamiento = null; });
+      caja.appendChild(cerrar);
+    }
+    (o.fijo ? dom.banda : dom.flotantes).appendChild(caja);
+    if (!o.silencioso) anunciar(o.anuncio || texto, true);
+    if (o.autoCerrar) setTimeout(quitar, o.autoCerrar);
+    return { quitar: quitar, caja: caja };
+  }
+
+  /** Tras quitar un aviso que tenía el foco: de vuelta a lo que estaba enfocado cuando salió; si ya no se puede, a un lugar razonable. */
+  function devolverFoco(previo) {
+    if (previo && previo !== document.body && previo.isConnected && !dom.avisos.contains(previo) && previo.getClientRects().length) {
+      asomar(function () { previo.focus({ preventScroll: true }); });
+    }
+    if (focoPerdido()) reponerFoco();
+  }
+
+  /* ---------------------------------------------------------------- resaltado */
+
+  const RE_ASCII = /^[\x00-\x7f]*$/;
+  const RE_MARCA = /[\u0300-\u036f]/;
+
+  /**
+   * Rangos [inicio, fin) del texto original donde aparece alguna palabra de la consulta, sin distinguir
+   * mayúsculas ni tildes. Como la normalización cambia longitudes, se lleva un mapa de posiciones.
+   */
+  function rangosCoincidencia(texto, ps) {
+    const t = texto.length > 2000 ? texto.slice(0, 2000) : texto;
+    const todo = C.normalizar(t);
+    let alguna = false;
+    for (let i = 0; i < ps.length; i++) if (todo.indexOf(ps[i]) !== -1) { alguna = true; break; }
+    if (!alguna) return [];
+
+    let norm = todo, inicio = null, fin = null;
+    if (!RE_ASCII.test(t)) {
+      norm = ''; inicio = []; fin = [];
+      for (let i = 0; i < t.length;) {
+        const c = t.charCodeAt(i);
+        let largo = 1, parte;
+        if (c < 128) parte = (c >= 65 && c <= 90) ? String.fromCharCode(c + 32) : t[i];
+        else {
+          largo = (c >= 0xD800 && c <= 0xDBFF && i + 1 < t.length) ? 2 : 1;
+          parte = C.normalizar(t.slice(i, i + largo));
+        }
+        for (let k = 0; k < parte.length; k++) { inicio.push(i); fin.push(i + largo); }
+        norm += parte;
+        i += largo;
+      }
+    }
+    const rangos = [];
+    for (let w = 0; w < ps.length && rangos.length < MAX_MARCAS; w++) {
+      const p = ps[w];
+      for (let desde = 0; rangos.length < MAX_MARCAS;) {
+        const j = norm.indexOf(p, desde);
+        if (j === -1) break;
+        const a = inicio ? inicio[j] : j;
+        let b = fin ? fin[j + p.length - 1] : j + p.length;
+        while (b < t.length && RE_MARCA.test(t[b])) b++;     // incluye los acentos combinados del último carácter
+        rangos.push([a, b]);
+        desde = j + p.length;
+      }
+    }
+    rangos.sort(function (x, y) { return x[0] - y[0] || x[1] - y[1]; });
+    const unidos = [];
+    for (let i = 0; i < rangos.length; i++) {
+      const u = unidos[unidos.length - 1];
+      if (u && rangos[i][0] <= u[1]) { if (rangos[i][1] > u[1]) u[1] = rangos[i][1]; }
+      else unidos.push([rangos[i][0], rangos[i][1]]);
+    }
+    return unidos;
+  }
+
+  /** Escribe `texto` en `destino` creando nodos de texto y <mark>; nunca usa innerHTML. */
+  function escribirMarcado(destino, texto) {
+    const rangos = palabras.length ? rangosCoincidencia(texto, palabras) : [];
+    if (!rangos.length) { destino.textContent = texto; return; }
+    let pos = 0;
+    for (let i = 0; i < rangos.length; i++) {
+      if (rangos[i][0] > pos) destino.appendChild(document.createTextNode(texto.slice(pos, rangos[i][0])));
+      destino.appendChild(crear('mark', '', texto.slice(rangos[i][0], rangos[i][1])));
+      pos = rangos[i][1];
+    }
+    if (pos < texto.length) destino.appendChild(document.createTextNode(texto.slice(pos)));
+  }
+
+  /* ---------------------------------------------------------------- lista */
+
+  function isoSeguro(ms) { try { return new Date(ms).toISOString(); } catch (e) { return ''; } }
+
+  function crearItem(n, ref) {
+    const li = crear('li', 'nota');
+    li.id = 'nota-' + n.id;
+    li.dataset.id = n.id;
+    li.setAttribute('role', 'option');
+    li.setAttribute('aria-selected', n.id === activaId ? 'true' : 'false');
+    const fila = crear('span', 'nota__fila');
+    const titulo = crear('span', 'nota__titulo');
+    escribirMarcado(titulo, C.titulo(n.texto));
+    if (esVacia(n.texto)) titulo.classList.add('nota__titulo--vacio');
+    const tiempo = crear('time', 'nota__tiempo', C.tiempoRelativo(n.editada, ref));
+    tiempo.dateTime = isoSeguro(n.editada);
+    tiempo.title = C.fechaCompleta(n.editada);
+    tiempo.dataset.ms = String(n.editada);
+    fila.appendChild(titulo);
+    fila.appendChild(tiempo);
+    const extracto = crear('span', 'nota__extracto');
+    escribirMarcado(extracto, C.extracto(n.texto));
+    li.appendChild(fila);
+    li.appendChild(extracto);
+    return li;
+  }
+
+  function coincideConsulta(n) { return !palabras.length || C.coincide(n, consulta); }
+
+  function textoCuenta(visibles) {
+    if (!notas.length) return 'Sin notas';
+    if (!palabras.length) return plural(visibles, 'nota', 'notas');
+    return visibles === 0 ? 'Sin resultados' : plural(visibles, 'resultado', 'resultados');
+  }
+
+  /** Reconstruye la lista según el orden aplicado y el filtro. */
+  function renderLista() {
+    const ref = ahora();
+    const porId = new Map();
+    for (let i = 0; i < notas.length; i++) porId.set(notas[i].id, notas[i]);
+    const marco = document.createDocumentFragment();
+    let visibles = 0, hayActiva = false;
+    for (let i = 0; i < orden.length; i++) {
+      const n = porId.get(orden[i]);
+      if (!n || !coincideConsulta(n)) continue;
+      marco.appendChild(crearItem(n, ref));
+      visibles++;
+      if (n.id === activaId) hayActiva = true;
+    }
+    dom.lista.replaceChildren(marco);
+    const sinResultados = notas.length > 0 && palabras.length > 0 && visibles === 0;
+    dom.lista.hidden = visibles === 0;
+    dom.sinResultados.hidden = !sinResultados;
+    dom.listaVacia.hidden = notas.length > 0;
+    if (sinResultados) {
+      const q = consulta.trim();
+      dom.sinResultadosTitulo.textContent = 'Ninguna nota coincide con «' + (q.length > MAX_CONSULTA_VISIBLE ? q.slice(0, MAX_CONSULTA_VISIBLE) + '…' : q) + '».';
+    }
+    if (hayActiva) dom.lista.setAttribute('aria-activedescendant', 'nota-' + activaId);
+    else dom.lista.removeAttribute('aria-activedescendant');
+    dom.limpiar.hidden = consulta === '' || sinResultados;
+    const cuenta = textoCuenta(visibles);
+    dom.cuenta.textContent = cuenta;
+    anunciar(palabras.length ? cuenta : '');
+    verActivaEnLista();                  // al reordenar o filtrar, la nota activa sigue a la vista
+  }
+
+  /** Recalcula el orden y repinta la lista si cambió el orden o hay un filtro activo (que pudo cambiar con la edición). */
+  function refrescarLista(forzar) {
+    const nuevo = calcularOrden();
+    if (forzar || palabras.length || !mismoOrden(nuevo, orden)) { orden = nuevo; renderLista(); }
+  }
+
+  function marcarSeleccion() {
+    const items = dom.lista.children;
+    for (let i = 0; i < items.length; i++) items[i].setAttribute('aria-selected', items[i].dataset.id === activaId ? 'true' : 'false');
+    if (activaId !== null && $('nota-' + activaId)) dom.lista.setAttribute('aria-activedescendant', 'nota-' + activaId);
+    else dom.lista.removeAttribute('aria-activedescendant');
+  }
+
+  /** Actualiza solo el elemento de la nota que se está editando, sin moverlo (la lista no salta al escribir). */
+  function actualizarItem(n) {
+    const viejo = $('nota-' + n.id);
+    if (viejo) viejo.replaceWith(crearItem(n, ahora()));
+  }
+
+  function refrescarTiempos() {
+    const ref = ahora();
+    const marcas = dom.lista.querySelectorAll('time.nota__tiempo');
+    for (let i = 0; i < marcas.length; i++) {
+      const t = C.tiempoRelativo(Number(marcas[i].dataset.ms), ref);
+      if (marcas[i].textContent !== t) marcas[i].textContent = t;
+    }
+  }
+
+  /**
+   * Desplaza la lista lo justo para que se vea la nota activa. No usa scrollIntoView a propósito: Chrome
+   * mueve con él el punto de partida de Tab y el primer Tab de la página caería en mitad de la lista.
+   */
+  function verActivaEnLista() {
+    const li = activaId === null ? null : $('nota-' + activaId);
+    if (!li) return;
+    const caja = dom.lista.parentElement;
+    const r = li.getBoundingClientRect(), c = caja.getBoundingClientRect();
+    if (r.top < c.top) caja.scrollTop -= (c.top - r.top) + 8;
+    else if (r.bottom > c.bottom) caja.scrollTop += (r.bottom - c.bottom) + 8;
+  }
+
+  /* ---------------------------------------------------------------- editor y barra de estado */
+
+  function contar(texto) {
+    let palabrasN = 0, caracteres = 0, dentro = false;
+    for (let i = 0; i < texto.length; i++) {
+      const c = texto.charCodeAt(i);
+      if (c >= 0xDC00 && c <= 0xDFFF && i > 0) { const p = texto.charCodeAt(i - 1); if (p >= 0xD800 && p <= 0xDBFF) continue; }
+      caracteres++;
+      const espacio = c === 32 || (c >= 9 && c <= 13) || c === 0xA0 || c === 0x1680 || (c >= 0x2000 && c <= 0x200A) ||
+        c === 0x2028 || c === 0x2029 || c === 0x202F || c === 0x205F || c === 0x3000 || c === 0xFEFF;
+      if (espacio) dentro = false;
+      else if (!dentro) { dentro = true; palabrasN++; }
+    }
+    return { palabras: palabrasN, caracteres: caracteres };
+  }
+
+  function pintarContadores(texto) {
+    const c = contar(texto);
+    dom.estPalabras.textContent = plural(c.palabras, 'palabra', 'palabras');
+    dom.estCaracteres.textContent = plural(c.caracteres, 'carácter', 'caracteres');
+  }
+
+  function pintarFecha(n) {
+    dom.estFecha.textContent = C.fechaCompleta(n.editada);
+    dom.estFecha.dateTime = isoSeguro(n.editada);
+  }
+
+  /**
+   * Cortacircuitos de apertura. Maquetar una nota con una forma patológica que esPesada no conoce puede colgar la pestaña durante minutos,
+   * y como la nota activa se guarda al abrirla, cada recarga volvería a abrirla y a colgarse, sin forma de llegar a la interfaz para eliminarla.
+   * Para las notas largas se escribe CLAVE_ABRIENDO antes de maquetar y se borra al terminar: si la pestaña se cuelga, la marca queda y
+   * cargar() no vuelve a abrir esa nota sola. `trabajo` es lo que hace que el editor se maquete con el texto de la nota; después se
+   * fuerza la maquetación aquí mismo (si no, ocurriría en el siguiente fotograma, ya con la marca borrada).
+   */
+  function abriendo(n, trabajo) {
+    const marcar = n !== null && n.texto.length > UMBRAL_MARCA;
+    if (marcar) escribirClave(CLAVE_ABRIENDO, n.id);
+    try {
+      trabajo();
+      if (marcar) void dom.editor.scrollHeight;
+    } finally {
+      if (marcar) quitarClave(CLAVE_ABRIENDO);
+    }
+  }
+
+  /** Muestra la nota activa en el editor (o en la vista previa) o, si no hay ninguna, el estado vacío. */
+  function pintarNota() {
+    const n = notaActiva();
+    const hay = n !== null;
+    dom.lienzo.hidden = !hay;
+    dom.estado.hidden = !hay;
+    dom.vacio.hidden = hay;
+    dom.acciones.hidden = !hay;
+    dom.barra.classList.toggle('principal__barra--vacia', !hay);
+    if (!hay) {
+      const conNotas = notas.length > 0;                   // hay notas pero ninguna abierta (por ejemplo, todas eran demasiado pesadas para abrirse solas)
+      dom.vacioTitulo.textContent = conNotas ? 'Ninguna nota abierta' : 'Tu cuaderno está vacío';
+      dom.vacioTexto.textContent = conNotas ? 'Elige una nota de la lista para abrirla, o crea una nueva.' : 'Una línea basta para empezar. Todo se guarda solo, en este navegador.';
+      dom.primera.textContent = conNotas ? 'Nueva nota' : 'Escribir la primera nota';
+      if (enVista) salirVista(false);
+      return;
+    }
+    abriendo(n, function () {
+      if (dom.editor.value !== n.texto) { dom.editor.value = n.texto; dom.editor.scrollTop = 0; }
+      pintarContadores(n.texto);
+      pintarFecha(n);
+      if (enVista) { renderVista(); dom.vista.scrollTop = 0; }
+    });
+  }
+
+  /* ---------------------------------------------------------------- vista previa */
+
+  /** Las tablas y bloques de código que desbordan se pueden enfocar y desplazar con el teclado. Lee todo y luego escribe. */
+  function marcarDesplazables(contenedor) {
+    const cajas = contenedor.querySelectorAll('pre, .tabla');
+    const desbordan = [];
+    for (let i = 0; i < cajas.length; i++) if (cajas[i].scrollWidth > cajas[i].clientWidth + 1) desbordan.push(cajas[i]);
+    for (let i = 0; i < desbordan.length; i++) {
+      desbordan[i].tabIndex = 0;
+      desbordan[i].setAttribute('role', 'region');
+      desbordan[i].setAttribute('aria-label', desbordan[i].tagName === 'PRE' ? 'Bloque de código, desplazable' : 'Tabla, desplazable');
+    }
+  }
+
+  /** Dibuja el markdown de la nota activa. Solo se llama con la vista previa visible (hace falta el diseño para medir). */
+  function renderVista() {
+    const n = notaActiva();
+    dom.vista.replaceChildren();
+    if (!n) return;
+    if (esVacia(n.texto)) {
+      dom.vista.appendChild(crear('p', 'vista__vacia', 'Esta nota está vacía. Vuelve a Escribir para empezar.'));
+      return;
+    }
+    dom.vista.appendChild(C.renderMarkdown(n.texto));
+    marcarDesplazables(dom.vista);
+  }
+
+  /**
+   * Pasa del área de texto a la vista previa. Guarda cursor, selección y desplazamiento del editor para
+   * devolverlos al volver, y coloca la vista en una zona equivalente. No toca la nota ni sus fechas.
+   */
+  function entrarVista(llevarFoco) {
+    const ed = dom.editor;
+    memoriaVista = { id: activaId, ini: ed.selectionStart, fin: ed.selectionEnd, dir: ed.selectionDirection, top: ed.scrollTop };
+    const recorrido = ed.scrollHeight - ed.clientHeight;
+    const proporcion = recorrido > 0 ? ed.scrollTop / recorrido : 0;
+    enVista = true;
+    ed.hidden = true;
+    dom.vista.hidden = false;
+    renderVista();
+    const recorridoVista = dom.vista.scrollHeight - dom.vista.clientHeight;
+    dom.vista.scrollTop = recorridoVista > 0 ? Math.round(proporcion * recorridoVista) : 0;
+    dom.modo.setAttribute('aria-pressed', 'true');
+    if (llevarFoco) dom.vista.focus({ preventScroll: true });
+  }
+
+  /** Vuelve del render al área de texto con el cursor, la selección y el desplazamiento de antes. */
+  function salirVista(llevarFoco) {
+    const ed = dom.editor;
+    enVista = false;
+    dom.vista.hidden = true;
+    dom.vista.replaceChildren();
+    abriendo(notaActiva(), function () { ed.hidden = false; });      // aquí es donde el editor vuelve a maquetarse con el texto de la nota
+    dom.modo.setAttribute('aria-pressed', 'false');
+    if (llevarFoco) ed.focus({ preventScroll: true });
+    const m = memoriaVista;
+    memoriaVista = null;
+    if (m && m.id === activaId && m.fin <= ed.value.length) {
+      try { ed.setSelectionRange(m.ini, m.fin, m.dir || 'none'); } catch (e) { /* sin selección que restaurar */ }
+      ed.scrollTop = m.top;
+    }
+  }
+
+  /**
+   * Alterna Escribir y Vista previa. El foco solo se mueve si estaba en la superficie que se oculta o en ninguna
+   * parte: con el foco en la lista, la búsqueda o un botón, se queda donde está.
+   */
+  function alternarVista() {
+    if (!notaActiva()) return;
+    const desdeLista = movil.matches && dom.app.dataset.vista === 'lista';   // con una sola vista, el cambio se tiene que ver
+    if (desdeLista) mostrarVista('editor');
+    const a = document.activeElement;
+    const sinFoco = !a || a === document.body || desdeLista;
+    if (enVista) salirVista(a === dom.vista || sinFoco);
+    else entrarVista(a === dom.editor || sinFoco);
+  }
+
+  function alEscribir() {
+    const n = notaActiva();
+    if (!n) return;
+    const valor = dom.editor.value;
+    if (valor === n.texto) return;            // sin cambio real: no se toca la fecha ni se guarda
+    n.texto = valor;
+    n.editada = ahora();
+    pintarContadores(valor);
+    pintarFecha(n);
+    actualizarItem(n);
+    programarGuardado();
+  }
+
+  /* ---------------------------------------------------------------- acciones */
+
+  function mostrarVista(vista) {
+    // En pantallas pequeñas el editor se maqueta de verdad la primera vez que la vista pasa a "editor".
+    abriendo(vista === 'editor' && movil.matches ? notaActiva() : null, function () { dom.app.dataset.vista = vista; });
+  }
+
+  function cambiarBusqueda(texto) {
+    consulta = texto.length > MAX_CONSULTA ? texto.slice(0, MAX_CONSULTA) : texto;   // una consulta enorme no cuelga la lista
+    palabras = Array.from(new Set(C.normalizar(consulta).split(/\s+/).filter(Boolean)));
+    renderLista();
+  }
+
+  function crearNota() {
+    if (notas.length >= MAX_NOTAS) {
+      if (!(avisoTope && avisoTope.caja.isConnected)) avisoTope = avisar('Has llegado a las 5.000 notas que admite el cuaderno. Elimina alguna para crear otra.', { autoCerrar: 8000 });
+      return;
+    }
+    if (enVista) salirVista(false);                 // una nota nueva se escribe, no se previsualiza
+    const n = nuevaNota('');
+    notas.push(n);
+    activaId = n.id;
+    dom.busqueda.value = '';
+    consulta = ''; palabras = [];
+    orden = calcularOrden();
+    guardarAhora();
+    renderLista();
+    pintarNota();
+    mostrarVista('editor');
+    dom.lista.parentElement.scrollTop = 0;
+    dom.editor.focus();
+  }
+
+  /**
+   * Hace activa una nota. `abrir` (por omisión verdadero) pasa a la vista del editor en pantallas pequeñas;
+   * la navegación con flechas lo desactiva para no sacar de la lista a quien la recorre.
+   */
+  function activar(id, abrir) {
+    const abrirEditor = function () {
+      if (abrir === false) return;
+      mostrarVista('editor');
+      if (movil.matches) dom.principal.focus({ preventScroll: true });
+    };
+    if (id === activaId) { abrirEditor(); return; }
+    if (!notaPorId(id)) return;
+    activaId = id;
+    const nuevo = calcularOrden();
+    guardarAhora();
+    if (mismoOrden(nuevo, orden)) marcarSeleccion();
+    else { orden = nuevo; renderLista(); }
+    pintarNota();
+    abrirEditor();
+  }
+
+  /* ---------------------------------------------------------------- foco */
+
+  /** ¿Se perdió el foco (nada enfocado, o el elemento enfocado ya no se ve)? */
+  function focoPerdido() {
+    const a = document.activeElement;
+    return !a || a === document.body || a === raiz || !a.isConnected || a.getClientRects().length === 0;
+  }
+
+  /**
+   * En modo enfoque la barra lateral está oculta y no se puede enfocar nada dentro: se asoma el tiempo justo
+   * de enfocar. Si el foco queda dentro, :focus-within la mantiene a la vista hasta que el foco salga.
+   */
+  function asomar(accion) {
+    const antes = raiz.getAttribute('data-asoma');
+    if (raiz.getAttribute('data-enfoque') === 'si') raiz.setAttribute('data-asoma', 'lateral');
+    try { accion(); }
+    finally { if (antes === null) raiz.removeAttribute('data-asoma'); else raiz.setAttribute('data-asoma', antes); }
+  }
+
+  function enfocarLista() {
+    if (lateralOculta()) fijarLateral(true);
+    if (movil.matches && dom.app.dataset.vista !== 'lista') mostrarVista('lista');
+    const destino = !dom.lista.hidden ? dom.lista : (notas.length ? dom.busqueda : dom.nueva);
+    asomar(function () { destino.focus({ preventScroll: true }); });
+    verActivaEnLista();
+  }
+
+  /** Lleva el foco a lo que se está viendo de la nota: el área de texto o la vista previa (o el estado vacío). */
+  function enfocarContenido() {
+    if (!notaActiva()) { (dom.vacio.getClientRects().length ? dom.primera : dom.nueva).focus({ preventScroll: true }); return; }
+    if (movil.matches) mostrarVista('editor');
+    (enVista ? dom.vista : dom.editor).focus({ preventScroll: true });
+  }
+
+  function enfocarBusqueda() {
+    if (lateralOculta()) fijarLateral(true);
+    if (movil.matches && dom.app.dataset.vista !== 'lista') mostrarVista('lista');
+    asomar(function () { dom.busqueda.focus({ preventScroll: true }); dom.busqueda.select(); });
+  }
+
+  /** Tras un cambio que pudo quitar de en medio el elemento enfocado, el foco no se queda en el aire. */
+  function reponerFoco() {
+    if (!focoPerdido() || dialogoAbierto()) return;
+    if (!notaActiva()) { (dom.vacio.getClientRects().length ? dom.primera : dom.nueva).focus({ preventScroll: true }); return; }
+    if (movil.matches && dom.app.dataset.vista === 'editor') dom.principal.focus({ preventScroll: true });
+    else enfocarLista();
+  }
+
+  /* ---------------------------------------------------------------- eliminar y deshacer */
+
+  /** Ids de lo que se ve en la lista, en el orden en que se ve. */
+  function idsVisibles() { return Array.prototype.map.call(dom.lista.children, function (li) { return li.dataset.id; }); }
+
+  /** Nota que queda seleccionada al quitar `id`: la siguiente de la lista visible, si no la anterior; si no hay, la vecina del orden completo. */
+  function vecinaDe(id) {
+    let ids = idsVisibles();
+    let i = ids.indexOf(id);
+    if (i === -1 || ids.length < 2) { ids = orden; i = ids.indexOf(id); }
+    if (i === -1) return null;
+    const siguiente = ids[i + 1] !== undefined ? ids[i + 1] : ids[i - 1];
+    return siguiente !== undefined ? notaPorId(siguiente) : null;
+  }
+
+  /** Muestra (o retira) el aviso de la eliminación más reciente que todavía se puede deshacer. */
+  function sincronizarAvisoDeshacer(silencioso) {
+    if (avisoDeshacer) { avisoDeshacer.quitar(); avisoDeshacer = null; }
+    if (!papelera.length) return;
+    const texto = 'Se eliminó «' + C.titulo(papelera[papelera.length - 1].nota.texto) + '».';
+    avisoDeshacer = avisar(texto, {
+      sinCerrar: true, silencioso: silencioso,
+      anuncio: texto + ' Pulsa Alt+Z para deshacer.',
+      accion: { texto: 'Deshacer', atajo: 'Alt+Z', titulo: 'Deshacer (Alt+Z)', alActivar: deshacer },
+    });
+  }
+
+  /** Elimina la nota activa al instante (y lo guarda al instante) y deja 8 s para deshacer. */
+  function eliminarActiva() {
+    const n = notaActiva();
+    if (!n) return;
+    const vecina = vecinaDe(n.id);
+    const registro = { nota: n, indice: notas.indexOf(n), temporizador: null };
+    notas.splice(registro.indice, 1);
+    eliminadasAqui.add(n.id); ajenas.delete(n.id);   // lo que guarde otra pestaña no debe devolver esta nota
+    activaId = vecina ? vecina.id : null;
+    orden = calcularOrden();
+    guardarAhora();
+    renderLista();
+    pintarNota();
+    verActivaEnLista();
+    registro.temporizador = setTimeout(function () { expirarEliminacion(registro); }, ESPERA_DESHACER);
+    papelera.push(registro);
+    sincronizarAvisoDeshacer(false);
+    reponerFoco();
+  }
+
+  /** Pasados los 8 s la eliminación queda confirmada. Las más antiguas vencen antes que las nuevas, así que casi nunca cambia el aviso. */
+  function expirarEliminacion(registro) {
+    const i = papelera.indexOf(registro);
+    if (i === -1) return;
+    papelera.splice(i, 1);
+    if (i === papelera.length) sincronizarAvisoDeshacer(true);
+    reponerFoco();
+  }
+
+  /** Restaura la última nota eliminada en su posición, con sus fechas, y la deja activa. Devuelve false si no había nada. */
+  function deshacer() {
+    const ultima = papelera[papelera.length - 1];
+    if (!ultima) return false;
+    if (notas.length >= MAX_NOTAS && !notaPorId(ultima.nota.id)) {          // restaurarla pasaría del tope: se explica y se queda en espera
+      avisar('No se puede deshacer: el cuaderno ya tiene 5.000 notas. Elimina otra y vuelve a pulsar Deshacer antes de que acaben los 8 segundos.', { autoCerrar: 8000 });
+      return false;
+    }
+    const registro = papelera.pop();
+    clearTimeout(registro.temporizador);
+    if (!notaPorId(registro.nota.id)) {
+      eliminadasAqui.delete(registro.nota.id);
+      notas.splice(Math.min(registro.indice, notas.length), 0, registro.nota);
+      activaId = registro.nota.id;
+      orden = calcularOrden();
+      guardarAhora();
+      renderLista();
+      pintarNota();
+      verActivaEnLista();
+    }
+    sincronizarAvisoDeshacer(true);
+    anunciar('Se restauró «' + C.titulo(registro.nota.texto) + '».', true);
+    reponerFoco();
+    return true;
+  }
+
+  /* ---------------------------------------------------------------- barra lateral colapsable (600 a 899 px) */
+
+  function lateralOculta() { return dom.app.dataset.lateral === 'oculta' && colapsable.matches; }
+
+  /** Muestra u oculta solo la barra lateral (el modo enfoque, aparte, oculta también la barra superior). */
+  function fijarLateral(visible) {
+    if (visible) delete dom.app.dataset.lateral; else dom.app.dataset.lateral = 'oculta';
+    dom.lateralAlternar.setAttribute('aria-expanded', visible ? 'true' : 'false');
+    dom.lateralTexto.textContent = visible ? 'Ocultar lista' : 'Mostrar lista';
+  }
+
+  /* ---------------------------------------------------------------- modo enfoque */
+
+  function fijarEnfoque(activo) {
+    if (activo) raiz.setAttribute('data-enfoque', 'si');
+    else { raiz.removeAttribute('data-enfoque'); raiz.removeAttribute('data-asoma'); }
+    dom.enfoque.setAttribute('aria-pressed', activo ? 'true' : 'false');
+  }
+
+  /** Oculta (o devuelve) la barra lateral y la superior. Si el foco estaba en ellas, pasa al contenido para que puedan ocultarse. */
+  function alternarEnfoque() {
+    const activo = raiz.getAttribute('data-enfoque') !== 'si';
+    fijarEnfoque(activo);
+    guardarPref('foco', activo);
+    if (activo && (dom.lateral.contains(document.activeElement) || dom.barra.contains(document.activeElement))) enfocarContenido();
+    anunciar(activo ? 'Modo enfoque activado. Alt y barra invertida lo desactivan.' : 'Modo enfoque desactivado.', true);
+  }
+
+  /* ---------------------------------------------------------------- tema */
+
+  /** Lee ceiba:prefs:v1.tema. Acepta los valores de la landing y los antiguos en inglés; cualquier otra cosa sigue al sistema. */
+  function temaGuardado() {
+    const t = leerPrefs().tema;
+    return (t === 'claro' || t === 'light') ? 'claro' : (t === 'oscuro' || t === 'dark') ? 'oscuro' : 'sistema';
+  }
+
+  /** Aplica 'sistema', 'claro' u 'oscuro': pone o quita data-theme en <html> y refleja el estado en el botón. */
+  function aplicarTema(valor) {
+    tema = valor;
+    if (valor === 'claro') raiz.setAttribute('data-theme', 'light');
+    else if (valor === 'oscuro') raiz.setAttribute('data-theme', 'dark');
+    else raiz.removeAttribute('data-theme');
+    dom.temaTexto.textContent = 'Tema: ' + valor;
+    for (let i = 0; i < dom.temaIconos.length; i++) dom.temaIconos[i].hidden = dom.temaIconos[i].dataset.tema !== valor;
+  }
+
+  /** Rota entre los tres temas. Desde "sistema" se va primero al aspecto contrario al del sistema, para que la primera pulsación siempre se note. */
+  function siguienteTema() {
+    let sistemaOscuro = false;
+    try { sistemaOscuro = window.matchMedia('(prefers-color-scheme: dark)').matches; } catch (e) { /* sin matchMedia: se asume claro */ }
+    const ciclo = sistemaOscuro ? ['sistema', 'claro', 'oscuro'] : ['sistema', 'oscuro', 'claro'];
+    return ciclo[(ciclo.indexOf(tema) + 1) % ciclo.length];
+  }
+
+  function alternarTema() {
+    const nuevo = siguienteTema();
+    aplicarTema(nuevo);
+    guardarPref('tema', nuevo);                    // si no se puede guardar, el tema vale para esta sesión
+    anunciar('Tema: ' + nuevo + '.', true);
+  }
+
+  /* ---------------------------------------------------------------- plan de demostración */
+
+  function planValido(plan, ciclo) {
+    return typeof plan === 'string' && typeof ciclo === 'string' &&
+      Object.prototype.hasOwnProperty.call(PLANES, plan) && Object.prototype.hasOwnProperty.call(CICLOS, ciclo);
+  }
+
+  /** Plan pedido por la URL (?plan=&ciclo=). Exige un único valor exacto de cada uno; si algo no cuadra, null y no pasa nada. */
+  function planDeLaUrl() {
+    let q;
+    try { q = new URLSearchParams(window.location.search); } catch (e) { return null; }
+    const planes = q.getAll('plan'), ciclos = q.getAll('ciclo');
+    if (planes.length !== 1 || ciclos.length !== 1 || !planValido(planes[0], ciclos[0])) return null;
+    return { plan: planes[0], ciclo: ciclos[0] };
+  }
+
+  /** Quita plan y ciclo de la URL sin recargar ni añadir entradas al historial; conserva el resto de la consulta y el fragmento. */
+  function limpiarUrlDelPlan() {
+    try {
+      const q = new URLSearchParams(window.location.search);
+      q.delete('plan'); q.delete('ciclo');
+      const resto = q.toString();
+      window.history.replaceState(window.history.state, '', window.location.pathname + (resto ? '?' + resto : '') + window.location.hash);
+    } catch (e) { /* sin History API o con restricciones: la URL se queda como está */ }
+  }
+
+  function planGuardado() {
+    const p = leerPrefs();
+    return planValido(p.plan, p.ciclo) ? { plan: p.plan, ciclo: p.ciclo } : null;
+  }
+
+  function pintarPlan() {
+    dom.plan.hidden = planActual === null;
+    if (planActual) dom.planNombre.textContent = 'Plan ' + PLANES[planActual.plan] + ', ' + planActual.ciclo + ' · demostración';
+  }
+
+  /* ---------------------------------------------------------------- diálogos (atajos y copia de seguridad) */
+
+  /** El diálogo modal que está abierto (hay como mucho uno), o null. */
+  function dialogoAbierto() { return dom.ayuda.open ? dom.ayuda : (dom.respaldoDialogo.open ? dom.respaldoDialogo : null); }
+
+  function abrirDialogo(dlg, inicial, origen) {
+    if (dialogoAbierto()) return;
+    focoPrevio.set(dlg, origen || document.activeElement);
+    if (typeof dlg.showModal === 'function') dlg.showModal();
+    else dlg.setAttribute('open', '');
+    inicial.focus({ preventScroll: true });
+  }
+
+  /** Cierra el diálogo y devuelve el foco a quien lo abrió (o, si ya no está, a un lugar razonable). */
+  function cerrarDialogo(dlg) {
+    if (dlg.open) {
+      if (typeof dlg.close === 'function') dlg.close();
+      else dlg.removeAttribute('open');
+    }
+    const previo = focoPrevio.get(dlg);
+    focoPrevio.delete(dlg);
+    if (previo && previo.isConnected && typeof previo.focus === 'function') {
+      asomar(function () { previo.focus({ preventScroll: true }); });
+      if (!focoPerdido() && document.activeElement === previo) return;
+    }
+    reponerFoco();
+  }
+
+  function abrirAyuda(origen) { abrirDialogo(dom.ayuda, dom.cerrarAyuda, origen); }
+  function cerrarAyuda() { cerrarDialogo(dom.ayuda); }
+  function abrirRespaldo(origen) {
+    if (dialogoAbierto()) return;
+    ocultarErrorRespaldo();
+    dom.copiaDanada.hidden = claveCopiaDanada() === null;
+    abrirDialogo(dom.respaldoDialogo, dom.exportarTodo, origen);
+  }
+  function cerrarRespaldo() { cerrarDialogo(dom.respaldoDialogo); }
+
+  /** Mientras un diálogo está abierto: Esc lo cierra y Tab no sale de él. */
+  function alTeclaDialogo(e, dlg) {
+    if (e.code === 'Escape' && !e.ctrlKey && !e.altKey && !e.metaKey && !e.shiftKey) { e.preventDefault(); cerrarDialogo(dlg); return; }
+    if (e.code !== 'Tab' || e.ctrlKey || e.altKey || e.metaKey) return;
+    const enfocables = Array.prototype.filter.call(dlg.querySelectorAll('button, [href], input, select, textarea, [tabindex]'), function (el) {
+      return !el.disabled && el.tabIndex >= 0 && el.getClientRects().length > 0;
+    });
+    if (!enfocables.length) { e.preventDefault(); return; }
+    const primero = enfocables[0], ultimo = enfocables[enfocables.length - 1], a = document.activeElement;
+    if (e.shiftKey) { if (a === primero || !dlg.contains(a)) { e.preventDefault(); ultimo.focus(); } }
+    else if (a === ultimo || !dlg.contains(a)) { e.preventDefault(); primero.focus(); }
+  }
+
+  /* ---------------------------------------------------------------- copia de seguridad */
+
+  function ocultarErrorRespaldo() { dom.respaldoError.hidden = true; dom.respaldoError.textContent = ''; }
+
+  /** Error de una importación: dentro del diálogo, con el foco en el mensaje para que se lea. Si el diálogo ya se cerró, como aviso. */
+  function errorRespaldo(mensaje) {
+    const texto = 'No se pudo importar. ' + mensaje;
+    if (dom.respaldoDialogo.open) {
+      dom.respaldoError.textContent = texto;
+      dom.respaldoError.hidden = false;
+      dom.respaldoError.focus({ preventScroll: true });
+    } else avisar(texto, { error: true });
+  }
+
+  /** AAAA-MM-DD en la hora local. */
+  function fechaArchivo(d) {
+    const dos = function (n) { return (n < 10 ? '0' : '') + n; };
+    return d.getFullYear() + '-' + dos(d.getMonth() + 1) + '-' + dos(d.getDate());
+  }
+
+  /** Descarga un archivo de texto UTF-8 sin pasar por la red: Blob + enlace con download. */
+  function descargar(nombre, tipo, contenido) {
+    const url = URL.createObjectURL(new Blob([contenido], { type: tipo }));
+    const a = document.createElement('a');
+    a.href = url; a.download = nombre; a.hidden = true;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(function () { URL.revokeObjectURL(url); }, 60000);
+  }
+
+  function exportarTodo() {
+    if (!notas.length) {
+      cerrarRespaldo();
+      avisar('No hay notas para exportar todavía. Escribe alguna y vuelve a intentarlo.', { autoCerrar: 8000 });
+      return;
+    }
+    const hoy = new Date();
+    const nombre = 'ceiba-notas-' + fechaArchivo(hoy) + '.json';
+    const copia = { version: 1, app: 'ceiba', exportada: hoy.toISOString(), notas: notas.slice().sort(comparar) };
+    try { descargar(nombre, 'application/json;charset=utf-8', JSON.stringify(copia, null, 2)); }
+    catch (e) { cerrarRespaldo(); avisar('No se pudo preparar la descarga de la copia de seguridad.', { error: true }); return; }
+    cerrarRespaldo();
+    avisar('Se descargó «' + nombre + '» con ' + plural(notas.length, 'nota', 'notas') + '. Guárdalo en un lugar seguro.', { autoCerrar: 8000 });
+  }
+
+  /** Clave de la copia más reciente de datos dañados (ceiba:notas:v1:corrupto:<ts>), o null si no hay ninguna. */
+  function claveCopiaDanada() {
+    const a = almacen();
+    if (!a) return null;
+    const prefijo = CLAVE_NOTAS + ':corrupto:';
+    let mejor = null, mejorTs = 0;
+    try {
+      for (let i = 0; i < a.length; i++) {
+        const k = a.key(i);
+        if (k === null || k.indexOf(prefijo) !== 0) continue;
+        const ts = Number(k.slice(prefijo.length)) || 0;
+        if (mejor === null || ts > mejorTs) { mejor = k; mejorTs = ts; }
+      }
+    } catch (e) { return null; }
+    return mejor;
+  }
+
+  /** Descarga tal cual la copia que se conservó al encontrar datos dañados, para que no quede solo en las herramientas del navegador. */
+  function descargarCopiaDanada() {
+    const clave = claveCopiaDanada();
+    const r = clave === null ? null : leerClave(clave);
+    cerrarRespaldo();
+    if (!r || r.valor === null) { avisar('No se encontró ninguna copia dañada que descargar.', { error: true }); return; }
+    const nombre = 'ceiba-notas-danadas-' + fechaArchivo(new Date()) + '.json';
+    try { descargar(nombre, 'application/json;charset=utf-8', r.valor); }
+    catch (e) { avisar('No se pudo preparar la descarga de la copia dañada.', { error: true }); return; }
+    avisar('Se descargó «' + nombre + '» con lo que había guardado, sin cambios.', { autoCerrar: 8000 });
+  }
+
+  function exportarNota() {
+    const n = notaActiva();
+    if (!n) return;
+    const nombre = C.nombreArchivo(C.titulo(n.texto));
+    try { descargar(nombre, 'text/markdown;charset=utf-8', n.texto); }
+    catch (e) { avisar('No se pudo preparar la descarga de la nota.', { error: true }); return; }
+    avisar('Se descargó «' + nombre + '».', { autoCerrar: 6000 });
+  }
+
+  /**
+   * Combina notas ya validadas con las actuales por id: gana la edición más reciente (con fechas iguales se queda la
+   * que ya estaba). Si el cuaderno pasara de 5.000 notas no se cambia nada y se devuelve { error }.
+   */
+  function fusionar(entrantes) {
+    const indice = new Map();
+    for (let i = 0; i < notas.length; i++) indice.set(notas[i].id, i);
+    const nuevas = [], cambios = [];
+    let antiguas = 0;
+    for (let i = 0; i < entrantes.length; i++) {
+      const e = entrantes[i], j = indice.get(e.id);
+      if (j === undefined) nuevas.push(e);
+      else if (e.editada > notas[j].editada) cambios.push([j, e]);
+      else antiguas++;
+    }
+    if (notas.length + nuevas.length > MAX_NOTAS) {
+      return { error: 'Con las notas nuevas del archivo el cuaderno pasaría de las 5.000 que admite. No se importó nada: elimina algunas notas y vuelve a intentarlo.' };
+    }
+    for (let i = 0; i < cambios.length; i++) notas[cambios[i][0]] = cambios[i][1];
+    for (let i = 0; i < nuevas.length; i++) notas.push(nuevas[i]);
+    return { añadidas: nuevas.length, actualizadas: cambios.length, antiguas: antiguas };
+  }
+
+  function textoInforme(r, invalidas, largas) {
+    const omitidas = invalidas + largas + r.antiguas;
+    let t = 'Importación lista: ' + plural(r.añadidas, 'añadida', 'añadidas') + ', ' + plural(r.actualizadas, 'actualizada', 'actualizadas') + ' y ' + plural(omitidas, 'omitida', 'omitidas') + '.';
+    const motivos = [];
+    if (invalidas) motivos.push(plural(invalidas, 'no válida o repetida en el archivo', 'no válidas o repetidas en el archivo'));
+    if (largas) motivos.push(plural(largas, 'demasiado larga o pesada (más de 50.000 líneas o con demasiados emojis o símbolos en una misma línea)', 'demasiado largas o pesadas (más de 50.000 líneas o con demasiados emojis o símbolos en una misma línea)'));
+    if (r.antiguas) motivos.push(plural(r.antiguas, 'ya estaba igual o más reciente aquí', 'ya estaban iguales o más recientes aquí'));
+    if (motivos.length) t += ' Omitidas: ' + motivos.join('; ') + '.';
+    return t;
+  }
+
+  /** Lee el archivo elegido, lo valida con Ceiba.validarImportacion y lo combina con las notas actuales. */
+  async function alElegirArchivo() {
+    const archivo = dom.archivo.files && dom.archivo.files[0];
+    dom.archivo.value = '';                                       // así se puede volver a elegir el mismo archivo
+    if (!archivo) return;
+    ocultarErrorRespaldo();
+    if (archivo.size === 0) { errorRespaldo('El archivo está vacío.'); return; }
+    if (archivo.size > MAX_BYTES_IMPORTACION) { errorRespaldo('El archivo es demasiado grande: la importación admite hasta 5 MB.'); return; }
+    let json;
+    try { json = JSON.parse(await archivo.text()); }
+    catch (e) { errorRespaldo('El archivo no es un JSON válido. Elige uno descargado con Exportar todo.'); return; }
+    const v = C.validarImportacion(json);
+    if (v.error) { errorRespaldo(v.error); return; }
+    if (!v.notas.length && !v.omitidas) { errorRespaldo('El archivo no contiene ninguna nota.'); return; }
+    const livianas = v.notas.filter(function (n) { return !esPesada(n.texto); });   // una nota de cientos de miles de líneas dejaría la app casi inutilizable
+    const largas = v.notas.length - livianas.length;
+    const r = fusionar(livianas);
+    if (r.error) { errorRespaldo(r.error); return; }
+    for (let i = 0; i < livianas.length; i++) eliminadasAjenas.delete(livianas[i].id);   // lo que se importa a propósito se queda aunque otra pestaña lo hubiera eliminado
+    if (activaId === null || !notaPorId(activaId)) activaId = notas.length ? notas.slice().sort(comparar)[0].id : null;
+    orden = calcularOrden();
+    guardarAhora();
+    renderLista();
+    pintarNota();
+    if (dom.respaldoDialogo.open) cerrarRespaldo();
+    avisar(textoInforme(r, v.omitidas, largas));
+  }
+
+  /* ---------------------------------------------------------------- otra pestaña cambió las notas */
+
+  /**
+   * Otra pestaña escribió ceiba:notas:v1. No se toca el editor ni lo que se está escribiendo: se avisa y se ofrece recargar.
+   * Mientras no se recargue, cada guardado de esta pestaña conserva las notas de la otra (guardarAhora las combina por id).
+   */
+  function avisarOtraPestana() {
+    if (avisoOtraPestana && avisoOtraPestana.caja.isConnected) return;
+    avisoOtraPestana = avisar('Las notas cambiaron en otra pestaña. Recarga para verlas. Mientras tanto, lo que guardes aquí se suma a esas notas; si editas la misma nota en las dos pestañas, queda la edición más reciente. Las notas que la otra pestaña eliminó no vuelven, salvo que las edites aquí.', {
+      fijo: true,
+      accion: { texto: 'Recargar', titulo: 'Recargar con los cambios de la otra pestaña', alActivar: recargarConservandoLoPendiente },
+    });
+  }
+
+  /**
+   * Recarga para ver lo que guardó la otra pestaña. Lo ya guardado manda; solo se añade la nota abierta si tiene texto
+   * que aún no se había escrito (la pausa de 300 ms), para no perderlo, salvo que la otra pestaña la haya editado después.
+   */
+  function recargarConservandoLoPendiente() {
+    if (temporizador !== null || sucio) {
+      const guardada = leerClave(CLAVE_NOTAS);
+      let base = null;
+      if (guardada.accesible && guardada.valor !== null) {
+        try { const v = C.validarImportacion(JSON.parse(guardada.valor)); if (!v.error) base = v.notas; } catch (e) { base = null; }
+      }
+      const n = notaActiva();
+      if (base === null) guardarAhora();                          // lo guardado desapareció o está roto: se vuelve a escribir lo de esta pestaña
+      else if (n) {
+        let i = -1;
+        for (let k = 0; k < base.length; k++) if (base[k].id === n.id) { i = k; break; }
+        if (i === -1) base.push(n);
+        else if (!(base[i].editada > n.editada)) base[i] = n;
+        escribirClave(CLAVE_NOTAS, JSON.stringify({ version: 1, notas: base, activa: n.id }));
+      }
+    }
+    soltarEscritura = true;                                       // el cierre de esta página no debe volcar su estado encima
+    window.location.reload();
+  }
+
+  /** Otra pestaña (por ejemplo la landing) cambió las preferencias: se actualizan el tema y el plan sin recargar. */
+  function sincronizarPrefs() {
+    const t = temaGuardado();
+    if (t !== tema) aplicarTema(t);
+    const p = planGuardado();
+    if (p) { planActual = p; pintarPlan(); }
+  }
+
+  /* ---------------------------------------------------------------- teclado virtual */
+
+  const PROPIEDADES_ESPEJO = ['boxSizing', 'paddingTop', 'paddingRight', 'paddingBottom', 'paddingLeft', 'borderTopWidth', 'borderRightWidth',
+    'borderBottomWidth', 'borderLeftWidth', 'fontFamily', 'fontSize', 'fontWeight', 'fontStyle', 'fontVariant', 'letterSpacing', 'wordSpacing',
+    'textTransform', 'textIndent', 'tabSize', 'lineHeight'];
+
+  /** Parte superior y alto de la línea donde está el cursor, dentro del contenido desplazable del área de texto (se mide con una copia invisible). */
+  function lineaDelCursor(ed) {
+    const cs = getComputedStyle(ed);
+    const espejo = document.createElement('div');
+    const st = espejo.style;
+    st.position = 'absolute'; st.visibility = 'hidden'; st.top = '0'; st.left = '-9999px'; st.height = 'auto';
+    st.whiteSpace = 'pre-wrap'; st.overflowWrap = 'break-word';
+    for (let i = 0; i < PROPIEDADES_ESPEJO.length; i++) st[PROPIEDADES_ESPEJO[i]] = cs[PROPIEDADES_ESPEJO[i]];
+    st.width = (ed.clientWidth + (parseFloat(cs.borderLeftWidth) || 0) + (parseFloat(cs.borderRightWidth) || 0)) + 'px';
+    espejo.textContent = ed.value.slice(0, ed.selectionEnd) + '\u200b';          // el carácter de cero ancho da altura a una última línea vacía
+    document.body.appendChild(espejo);
+    const total = espejo.offsetHeight;
+    espejo.remove();
+    const alto = parseFloat(cs.lineHeight) || (parseFloat(cs.fontSize) * 1.5);
+    const abajo = total - (parseFloat(cs.paddingBottom) || 0) - (parseFloat(cs.borderBottomWidth) || 0);
+    return { arriba: abajo - alto, alto: alto };
+  }
+
+  /** Si la zona visible se acorta, desplaza el área de texto lo justo para que la línea del cursor siga a la vista. */
+  function revelarCursor() {
+    const ed = dom.editor;
+    if (enVista || document.activeElement !== ed || ed.getClientRects().length === 0) return;
+    const l = lineaDelCursor(ed), margen = 8;
+    if (l.arriba < ed.scrollTop) ed.scrollTop = Math.max(0, l.arriba - margen);
+    else if (l.arriba + l.alto > ed.scrollTop + ed.clientHeight) ed.scrollTop = l.arriba + l.alto - ed.clientHeight + margen;
+  }
+
+  /** Igual que revelarCursor, pero como mucho una vez por fotograma: al arrastrar el borde de la ventana llegan muchos eventos seguidos. */
+  function revelarCursorDiferido() {
+    if (revelacionPendiente) return;
+    revelacionPendiente = true;
+    requestAnimationFrame(function () { revelacionPendiente = false; revelarCursor(); });
+  }
+
+  /**
+   * Cuando el teclado virtual cubre parte de la página sin cambiar el tamaño del documento (iOS y otros), visualViewport es más
+   * pequeño que la ventana: la app se ajusta a esa zona. Un gesto de zoom (escala > 1) no cuenta como teclado. Si el navegador
+   * ya redimensiona el documento (la altura sigue a 100dvh) no hay diferencia y solo se cuida que el cursor quede a la vista.
+   */
+  function ajustarVisualViewport() {
+    const encogida = window.innerHeight < altoVentana;           // el propio documento se acortó (el teclado redimensiona la página)
+    altoVentana = window.innerHeight;
+    const vv = window.visualViewport;
+    if (vv) {
+      const tapado = Math.round(window.innerHeight - vv.height - vv.offsetTop);
+      if (vv.scale <= 1.01 && tapado >= UMBRAL_TECLADO) {
+        raiz.style.setProperty('--vv-alto', Math.round(vv.height) + 'px');
+        raiz.style.setProperty('--vv-arriba', Math.round(vv.offsetTop) + 'px');
+        raiz.style.setProperty('--vv-tapado', tapado + 'px');
+        raiz.setAttribute('data-teclado', 'si');
+        tecladoAbierto = true;
+        revelarCursor();
+        return;
+      }
+      if (tecladoAbierto) {
+        raiz.style.removeProperty('--vv-alto');
+        raiz.style.removeProperty('--vv-arriba');
+        raiz.style.removeProperty('--vv-tapado');
+        raiz.removeAttribute('data-teclado');
+        tecladoAbierto = false;
+      }
+    }
+    if (encogida) revelarCursorDiferido();
+  }
+
+  /* ---------------------------------------------------------------- eventos */
+
+  dom.nueva.addEventListener('click', crearNota);
+  dom.primera.addEventListener('click', crearNota);
+  dom.editor.addEventListener('input', alEscribir);
+
+  dom.busqueda.addEventListener('input', function () { cambiarBusqueda(dom.busqueda.value); });
+  function vaciarBusqueda() { dom.busqueda.value = ''; cambiarBusqueda(''); dom.busqueda.focus(); }
+  dom.limpiar.addEventListener('click', vaciarBusqueda);
+  dom.borrarBusqueda.addEventListener('click', vaciarBusqueda);
+
+  dom.lista.addEventListener('click', function (e) {
+    const li = e.target.closest ? e.target.closest('li[role="option"]') : null;
+    if (li && dom.lista.contains(li)) activar(li.dataset.id);
+  });
+
+  dom.volver.addEventListener('click', function () {
+    mostrarVista('lista');
+    (dom.lista.hidden ? dom.busqueda : dom.lista).focus();
+  });
+
+  /* Botones de la barra superior, del pie y de la barra de estado */
+  dom.modo.addEventListener('click', alternarVista);
+  dom.eliminar.addEventListener('click', eliminarActiva);
+  dom.enfoque.addEventListener('click', alternarEnfoque);
+  dom.atajos.addEventListener('click', function () { abrirAyuda(dom.atajos); });
+  dom.respaldo.addEventListener('click', function () { abrirRespaldo(dom.respaldo); });
+  [[dom.ayuda, dom.cerrarAyuda], [dom.respaldoDialogo, dom.cerrarRespaldo]].forEach(function (par) {
+    const dlg = par[0];
+    par[1].addEventListener('click', function () { cerrarDialogo(dlg); });
+    dlg.addEventListener('click', function (e) { if (e.target === dlg) cerrarDialogo(dlg); });   // clic en el fondo
+    dlg.addEventListener('cancel', function (e) {                                                // petición de cierre del navegador
+      if (e.target !== dlg) return;                          // el "cancel" del selector de archivos también burbujea hasta aquí: no es del diálogo
+      e.preventDefault(); cerrarDialogo(dlg);
+    });
+    dlg.addEventListener('close', function () { if (focoPrevio.has(dlg)) cerrarDialogo(dlg); }); // cierre por otra vía: devuelve el foco
+  });
+  dom.lateralAlternar.addEventListener('click', function () { fijarLateral(dom.app.dataset.lateral === 'oculta'); });
+  dom.tema.addEventListener('click', alternarTema);
+  dom.exportarNota.addEventListener('click', exportarNota);
+  dom.exportarTodo.addEventListener('click', exportarTodo);
+  dom.descargarDanada.addEventListener('click', descargarCopiaDanada);
+  dom.importar.addEventListener('click', function () { ocultarErrorRespaldo(); dom.archivo.click(); });
+  dom.archivo.addEventListener('change', alElegirArchivo);
+
+  /* "Saltar al contenido": en pantallas pequeñas la lista oculta el contenido, así que primero se abre la nota. */
+  dom.salto.addEventListener('click', function (e) {
+    e.preventDefault();
+    if (movil.matches && dom.app.dataset.vista !== 'editor') mostrarVista('editor');
+    dom.principal.focus({ preventScroll: true });
+  });
+
+  /* Enlaces internos (#) de la vista previa: nunca cambian la URL de la aplicación. Si coinciden con un título, se va a él. */
+  function claveAncla(t) {
+    let s = String(t);
+    try { s = decodeURIComponent(s); } catch (e) { /* se usa tal cual */ }
+    return C.normalizar(s).replace(/[^\p{L}\p{N}]+/gu, '-').replace(/^-+|-+$/g, '');
+  }
+  dom.vista.addEventListener('click', function (e) {
+    const a = e.target.closest ? e.target.closest('a') : null;
+    if (!a || !dom.vista.contains(a)) return;
+    const destino = a.getAttribute('href') || '';
+    if (destino.charAt(0) !== '#') return;                       // los enlaces externos se abren en otra pestaña
+    e.preventDefault();
+    const clave = claveAncla(destino.slice(1));
+    if (!clave) return;
+    const titulos = dom.vista.querySelectorAll('h1, h2, h3, h4, h5, h6');
+    for (let i = 0; i < titulos.length; i++) {
+      if (claveAncla(titulos[i].textContent) === clave) {
+        dom.vista.scrollTop += titulos[i].getBoundingClientRect().top - dom.vista.getBoundingClientRect().top - 16;
+        return;
+      }
+    }
+  });
+
+  /* ---------------------------------------------------------------- teclado */
+
+  /** ¿El elemento es un campo donde se escribe texto? (Ahí "/" y "?" son caracteres, no atajos.) */
+  function esCampoTexto(el) {
+    if (!el || el.nodeType !== 1) return false;
+    if (el.tagName === 'TEXTAREA' || el.tagName === 'SELECT') return true;
+    if (el.tagName === 'INPUT') return !/^(button|submit|reset|checkbox|radio|file|image|range|color)$/i.test(el.type);
+    return el.isContentEditable === true;
+  }
+
+  /**
+   * Teclas que dependen de la distribución del teclado (/ y ?): vale el carácter producido, así funcionan
+   * donde "?" no está en la tecla Slash. Si el evento no trae `key` (sintético) se recurre al código de tecla.
+   */
+  function esCaracter(e, caracter, codigo, mayus) {
+    if (e.key === caracter) return true;
+    return e.code === codigo && e.shiftKey === mayus && (e.key === undefined || e.key === '' || e.key === 'Unidentified');
+  }
+
+  function borrarBusqueda() { dom.busqueda.value = ''; cambiarBusqueda(''); }
+
+  function alEscape(e) {
+    const t = e.target;
+    if (t === dom.busqueda) { e.preventDefault(); borrarBusqueda(); enfocarLista(); return; }
+    if (dom.lateral.contains(t)) {
+      if (consulta !== '') {
+        e.preventDefault();
+        borrarBusqueda();
+        // Limpiar búsqueda y Borrar búsqueda desaparecen al borrar el filtro: el foco que tenían no puede quedarse en el aire (cae a BODY)
+        if (t === dom.limpiar || t === dom.borrarBusqueda || focoPerdido()) enfocarLista();
+      }
+      return;
+    }
+    if (dom.principal.contains(t)) { e.preventDefault(); enfocarLista(); }   // el texto no se toca: solo cambia el foco
+  }
+
+  /** Atajos globales. Alt + tecla usa event.code (con Opción en Mac `key` cambia); sin Ctrl, Meta ni Mayús, para no pisar al navegador ni a AltGr. */
+  function alTecla(e) {
+    if (e.defaultPrevented || e.isComposing || e.keyCode === 229) return;
+    const dialogo = dialogoAbierto();
+    if (dialogo) { alTeclaDialogo(e, dialogo); return; }
+    if (e.altKey) {
+      if (e.ctrlKey || e.metaKey || e.shiftKey) return;
+      if (e.key === 'Dead') return;                                // Opción+N en Mac es la tecla muerta de la tilde (ñ): no es un atajo
+      let accion = null;
+      switch (e.code) {
+        case 'KeyN': accion = crearNota; break;
+        case 'Backspace': if (esCampoTexto(e.target)) return; accion = eliminarActiva; break;   // en un campo de texto Opción+Retroceso borra una palabra
+        case 'KeyP': accion = alternarVista; break;
+        case 'KeyZ': accion = deshacer; break;
+        case 'Backslash': accion = alternarEnfoque; break;
+        default: return;
+      }
+      e.preventDefault();                                          // también evita los caracteres que Opción escribe en Mac
+      if (!e.repeat) accion();                                     // mantener la tecla no repite (ni elimina en cadena)
+      return;
+    }
+    if ((e.ctrlKey || e.metaKey) && !e.shiftKey && e.code === 'KeyK') { e.preventDefault(); if (!e.repeat) enfocarBusqueda(); return; }
+    if (e.ctrlKey || e.metaKey) return;
+    if (e.code === 'Escape' && !e.shiftKey) { alEscape(e); return; }
+    if (esCampoTexto(e.target)) return;
+    if (esCaracter(e, '/', 'Slash', false)) { e.preventDefault(); enfocarBusqueda(); return; }
+    if (esCaracter(e, '?', 'Slash', true)) { e.preventDefault(); abrirAyuda(); }
+  }
+  document.addEventListener('keydown', alTecla);
+
+  /* Lista: una sola parada de Tab; las flechas mueven la selección y abren la nota sin sacar el foco de la lista. */
+  dom.lista.addEventListener('keydown', function (e) {
+    if (e.altKey || e.ctrlKey || e.metaKey || e.shiftKey || e.isComposing) return;
+    const ids = idsVisibles();
+    if (!ids.length) return;
+    const i = ids.indexOf(activaId);
+    let destino;
+    switch (e.code) {
+      case 'ArrowDown': destino = i === -1 ? ids[0] : ids[Math.min(i + 1, ids.length - 1)]; break;
+      case 'ArrowUp': destino = i === -1 ? ids[ids.length - 1] : ids[Math.max(i - 1, 0)]; break;
+      case 'Home': destino = ids[0]; break;
+      case 'End': destino = ids[ids.length - 1]; break;
+      case 'Enter': case 'NumpadEnter': case 'ArrowRight': e.preventDefault(); enfocarContenido(); return;
+      default: return;
+    }
+    e.preventDefault();
+    if (destino !== activaId) { activar(destino, false); verActivaEnLista(); }
+  });
+
+  /* Búsqueda: Flecha abajo pasa a la lista y Enter abre el resultado (la nota activa si coincide, si no el primero). */
+  dom.busqueda.addEventListener('keydown', function (e) {
+    if (e.altKey || e.ctrlKey || e.metaKey || e.shiftKey || e.isComposing) return;
+    const abajo = e.code === 'ArrowDown', entrar = e.code === 'Enter' || e.code === 'NumpadEnter';
+    if (!abajo && !entrar) return;
+    e.preventDefault();
+    const ids = idsVisibles();
+    if (!ids.length) return;
+    if (ids.indexOf(activaId) === -1) activar(ids[0], false);
+    if (abajo) enfocarLista(); else enfocarContenido();
+  });
+
+  /* Editor: Enter continúa listas (viñetas, números y tareas). Se inserta con execCommand para no perder el historial de deshacer. */
+  const RE_ELEMENTO = /^([ \t]*)(?:([-*+])|(\d{1,9})([.)]))([ \t]+)(\[[ xX]\][ \t]+)?/;
+  const RE_CERCA = /^ {0,3}(?:`{3,}|~{3,})/gm;
+
+  /** ¿La posición `ini` (inicio de línea) cae dentro de un bloque de código con cercas abierto? */
+  function dentroDeCerca(texto, ini) {
+    const antes = texto.slice(0, ini);
+    const m = antes.match(RE_CERCA);
+    return m !== null && m.length % 2 === 1;
+  }
+
+  /** Reemplaza la selección del editor por `texto` conservando el historial nativo de deshacer. */
+  function insertarEnEditor(texto) {
+    let hecho = false;
+    try { hecho = texto === '' ? document.execCommand('delete') : document.execCommand('insertText', false, texto); } catch (e) { hecho = false; }
+    if (!hecho) {                                                    // sin execCommand: se pierde el historial, pero no el texto
+      dom.editor.setRangeText(texto, dom.editor.selectionStart, dom.editor.selectionEnd, 'end');
+      alEscribir();
+    }
+  }
+
+  dom.editor.addEventListener('keydown', function (e) {
+    if ((e.code !== 'Enter' && e.code !== 'NumpadEnter') || e.shiftKey || e.ctrlKey || e.altKey || e.metaKey || e.isComposing || e.defaultPrevented) return;
+    const ed = dom.editor;
+    if (ed.selectionStart !== ed.selectionEnd) return;               // con texto seleccionado, el salto de línea normal
+    const v = ed.value, pos = ed.selectionStart;
+    const ini = pos === 0 ? 0 : v.lastIndexOf('\n', pos - 1) + 1;
+    let fin = v.indexOf('\n', pos);
+    if (fin === -1) fin = v.length;
+    const linea = v.slice(ini, fin);
+    const m = RE_ELEMENTO.exec(linea);
+    if (!m || pos - ini < m[0].length) return;                       // no es un elemento de lista, o el cursor está dentro del marcador
+    if (dentroDeCerca(v, ini)) return;                               // en un bloque de código no se continúan listas
+    e.preventDefault();
+    if (!linea.slice(m[0].length).trim()) {                          // elemento vacío: termina la lista y borra el marcador
+      ed.setSelectionRange(ini, fin);
+      insertarEnEditor('');
+      return;
+    }
+    const marcador = m[2] ? m[2] : String(parseInt(m[3], 10) + 1) + m[4];
+    insertarEnEditor('\n' + m[1] + marcador + m[5] + (m[6] ? '[ ] ' : ''));
+  });
+
+  /* Modo enfoque con el ratón: en el borde izquierdo asoma la barra lateral y en el superior la barra del panel. */
+  document.addEventListener('mousemove', function (e) {
+    if (raiz.getAttribute('data-enfoque') !== 'si') return;
+    const asoma = raiz.getAttribute('data-asoma');
+    if (asoma === null) {
+      if (e.clientX <= BORDE_ASOMA) raiz.setAttribute('data-asoma', 'lateral');
+      else if (e.clientY <= BORDE_ASOMA) raiz.setAttribute('data-asoma', 'barra');
+    } else if (asoma === 'lateral') {
+      if (e.clientX > dom.lateral.getBoundingClientRect().right && !dom.lateral.contains(document.activeElement)) raiz.removeAttribute('data-asoma');
+    } else if (e.clientY > dom.barra.getBoundingClientRect().bottom && !dom.barra.contains(document.activeElement)) {
+      raiz.removeAttribute('data-asoma');
+    }
+  }, { passive: true });
+  raiz.addEventListener('mouseleave', function () { raiz.removeAttribute('data-asoma'); });
+
+  document.addEventListener('visibilitychange', function () {
+    if (document.visibilityState === 'hidden') volcarPendiente(); else refrescarTiempos();
+  });
+  window.addEventListener('pagehide', volcarPendiente);
+  window.addEventListener('pageshow', function (e) { if (e.persisted) refrescarTiempos(); });
+  setInterval(refrescarTiempos, REFRESCO_TIEMPOS);
+
+  /* Otra pestaña del mismo sitio escribió en el almacenamiento (el evento no se dispara en la pestaña que escribe). */
+  window.addEventListener('storage', function (e) {
+    try { if (e.storageArea && e.storageArea !== window.localStorage) return; } catch (x) { return; }
+    if (e.key === null || e.key === CLAVE_NOTAS) avisarOtraPestana();
+    else if (e.key === CLAVE_PREFS) sincronizarPrefs();
+  });
+
+  /* Teclado virtual: la zona visible cambia sin que cambie el documento. */
+  if (window.visualViewport) {
+    window.visualViewport.addEventListener('resize', ajustarVisualViewport);
+    window.visualViewport.addEventListener('scroll', ajustarVisualViewport);
+  }
+  window.addEventListener('resize', ajustarVisualViewport);
+
+  /* La vista (lista o editor) sigue al foco también en escritorio, donde el CSS no la usa. Así, al cruzar los 600 px (zoom del navegador al 200 %,
+     girar el móvil, redimensionar) la app pasa a la vista donde estaba el foco: si no, escribiendo en el editor la vista seguiría en "lista" y el
+     CSS ocultaría el panel que tiene el foco (quien escribe se quedaría sin editor). No se intenta arreglar en el momento del cruce: el orden entre
+     el evento resize, el cambio de media query y el recálculo de estilos no está garantizado, y el foco ya se habría perdido. */
+  document.addEventListener('focusin', function (e) {
+    if (movil.matches) return;                         // en pantallas pequeñas la vista la decide la navegación
+    const t = e.target;
+    if (dom.lateral.contains(t) || t === dom.lateralAlternar) dom.app.dataset.vista = 'lista';   // el botón Ocultar lista pertenece a la lista aunque esté en la barra del panel
+    else if (dom.principal.contains(t)) dom.app.dataset.vista = 'editor';
+  });
+
+  /* ---------------------------------------------------------------- arranque */
+
+  const carga = cargar();
+  notas = carga.notas;
+  activaId = carga.activa;
+  ultimoEscrito = carga.bruto;
+  instantanea = mapaEditadas(carga.notas);
+  if (carga.primeraVez) {
+    const bienvenida = nuevaNota(BIENVENIDA);
+    notas = [bienvenida];
+    activaId = bienvenida.id;
+  }
+  orden = calcularOrden();
+  fijarGuardado('guardado');
+  fijarEnfoque(raiz.getAttribute('data-enfoque') === 'si');    // el atributo ya lo puso el script del <head>; aquí solo se sincroniza el botón
+  aplicarTema(temaGuardado());                                 // el <head> ya aplicó el tema explícito; aquí se sincroniza el botón
+  const planUrl = planDeLaUrl();
+  if (planUrl) { planActual = planUrl; guardarPrefs(planUrl); limpiarUrlDelPlan(); }
+  else planActual = planGuardado();
+  pintarPlan();
+  pintarNota();
+  renderLista();
+  verActivaEnLista();
+  for (let i = 0; i < carga.avisos.length; i++) avisar(carga.avisos[i].texto, { error: carga.avisos[i].error, fijo: true });
+  if (escrituraBloqueada) { fallo = true; sucio = true; fijarGuardado('sin-guardar'); }
+  else if (carga.guardar) guardarAhora();
+})();
+</script>
+</body>
+</html>
