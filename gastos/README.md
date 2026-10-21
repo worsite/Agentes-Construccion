@@ -24,7 +24,7 @@ Reglas de negocio: la cuota mensual la fija el admin por usuario; un pago cuenta
    ```
    Hazlo **antes** de compartir el enlace: el primero que registre `miguel` será el único candidato a admin, y el admin solo se concede con este SQL, nunca desde el navegador.
 4. Como Miguel: en **Admin** define la cuota de cada usuario y los gastos del mes.
-5. **Publicar en Netlify:** arrastra la carpeta `gastos/` (debe incluir `index.html` y `vendor/`; `supabase/` y `tests/` no son necesarios para el sitio).
+5. **Publicar en Netlify:** arrastra la carpeta `gastos/` (solo `index.html` es necesario; carga supabase-js desde jsdelivr).
 
 `index.html` ya trae la URL del proyecto y la clave **anon** (pública por diseño). Nunca pongas la clave `service_role` en el frontend.
 

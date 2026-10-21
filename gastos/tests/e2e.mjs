@@ -30,7 +30,7 @@ const page = await ctx.newPage();
 const errores = [];
 page.on('pageerror', e => errores.push('pageerror: ' + e.message));
 page.on('console', m => { if (m.type() === 'error') errores.push('console: ' + m.text()); });
-await page.route('**/vendor/supabase.js', r => r.fulfill({ contentType: 'text/javascript', body: MOCK }));
+await page.route('**/@supabase/supabase-js@*/**', r => r.fulfill({ contentType: 'text/javascript', body: MOCK }));
 await page.goto(URL_);
 const txt = () => page.locator('#app').innerText();
 const ir = async h => { await page.evaluate(h => (location.hash = h), h); await page.waitForTimeout(150); };
