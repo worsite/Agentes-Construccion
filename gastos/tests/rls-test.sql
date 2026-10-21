@@ -8,7 +8,7 @@ insert into auth.users(id,email,raw_user_meta_data) values
 insert into auth.users(email,raw_user_meta_data) values ('bad@x','{"username":"a b","display_name":"X"}');   -- ERROR esperado
 insert into auth.users(email,raw_user_meta_data) values ('dup@x','{"username":"ANA","display_name":"Dup"}'); -- ERROR esperado (unico)
 update profiles set is_admin=true,status='approved' where username='miguel';
-update profiles set status='approved', monthly_quota=100000 where username='ana';
+update profiles set status='approved' where username='ana';
 select 'perfiles:'||count(*) from profiles;
 
 set role authenticated; set request.jwt.claim.sub='00000000-0000-0000-0000-00000000000c'; -- luis (pending)
@@ -45,7 +45,6 @@ select 'tras copiar, gas siguiente mes paid=false: '||(not paid) from general_ex
 
 set request.jwt.claim.sub='00000000-0000-0000-0000-00000000000b';
 select 'ana ve ahorros de otros (esperado solo 1): '||count(*) from savings_accounts;
-select 'ana ejecuta admin_set_quota (debe fallar):'; select admin_set_quota('00000000-0000-0000-0000-00000000000b',1);
 select 'ana borra gasto (0 filas):'; delete from general_expenses;
 select 'gastos aun: '||count(*) from general_expenses;
 select 'ana cambia fecha objetivo deuda:'; update debts set target_date=current_date+90;
@@ -56,4 +55,7 @@ select 'anon gastos: '||count(*) from general_expenses;
 select 'anon panel: '||username||' '||quota||' '||paid from panel_usuarios();
 select 'anon perfiles (debe fallar):'; select count(*) from profiles;
 select 'anon pagos (debe fallar):'; select count(*) from payments;
-select 'anon admin_set_quota (debe fallar):'; select admin_set_quota('00000000-0000-0000-0000-00000000000b',1);
+reset role; set role authenticated; set request.jwt.claim.sub='00000000-0000-0000-0000-00000000000b';
+select 'ana: gastos 120000 / 3 aprobados (miguel, ana, luis) => cuota esperada 40000: '||quota from panel_usuarios() where username='ana';
+select 'ana fija daily_plan en su deuda: '; update debts set daily_plan=15000;
+select 'ana intenta subir el plan de otro (0 filas): '; set request.jwt.claim.sub='00000000-0000-0000-0000-00000000000c'; update debts set daily_plan=1;

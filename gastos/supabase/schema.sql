@@ -67,10 +67,13 @@ create table if not exists public.debts (
   user_id     uuid not null references public.profiles(id) on delete cascade,
   name        text not null check (char_length(name) between 1 and 80),
   target_date date,                       -- fecha en que quiere terminar de pagarla
+  daily_plan  numeric(14,2) not null default 0 check (daily_plan >= 0), -- cuanto quiere pagar por dia (0 = no incluida)
   created_at  timestamptz not null default now(),
   unique (id, user_id)
 );
 -- Cada registro del monto con su fecha (el monto puede cambiar por intereses).
+-- Para bases ya creadas con la version anterior:
+alter table public.debts add column if not exists daily_plan numeric(14,2) not null default 0 check (daily_plan >= 0);
 create table if not exists public.debt_balances (
   id          uuid primary key default gen_random_uuid(),
   debt_id     uuid not null,
@@ -138,16 +141,24 @@ create trigger general_expenses_paid_at before insert or update on public.genera
   for each row execute function public.set_paid_at();
 
 -- ---------- Panel general publico (visible sin iniciar sesion) ----------
+-- La cuota de cada usuario = (suma de gastos generales del mes) / (usuarios aprobados), redondeada hacia arriba.
 -- Solo expone nombre, cuota y total pagado del mes. Nada de metodo, ahorros ni deudas.
 create or replace function public.panel_usuarios(p_month date default date_trunc('month', current_date)::date)
 returns table (username text, display_name text, quota numeric, paid numeric)
 language sql stable security definer set search_path = public as $$
-  select p.username, p.display_name, p.monthly_quota,
+  with tot as (
+    select coalesce(sum(amount), 0) as t from public.general_expenses
+    where month = date_trunc('month', p_month)::date
+  ), n as (
+    select count(*) as c from public.profiles where status = 'approved'
+  )
+  select p.username, p.display_name,
+         case when n.c > 0 then ceil(tot.t / n.c) else 0 end,
          coalesce((select sum(py.amount) from public.payments py
                    where py.user_id = p.id
                      and py.paid_on >= date_trunc('month', p_month)::date
                      and py.paid_on <  (date_trunc('month', p_month) + interval '1 month')::date), 0)
-  from public.profiles p
+  from public.profiles p, tot, n
   where p.status = 'approved'
   order by p.display_name;
 $$;
@@ -161,13 +172,8 @@ begin
   update public.profiles set status = p_status where id = p_user and is_admin = false;
 end $$;
 
-create or replace function public.admin_set_quota(p_user uuid, p_quota numeric) returns void
-language plpgsql security definer set search_path = public as $$
-begin
-  if not public.is_admin() then raise exception 'No autorizado'; end if;
-  if p_quota is null or p_quota < 0 then raise exception 'Cuota invalida'; end if;
-  update public.profiles set monthly_quota = p_quota where id = p_user;
-end $$;
+-- La cuota ya no se fija a mano: ver panel_usuarios.
+drop function if exists public.admin_set_quota(uuid, numeric);
 
 -- Copia los gastos de un mes a otro (sin marcar como pagados).
 create or replace function public.admin_copy_expenses(p_from date, p_to date) returns integer
@@ -239,14 +245,12 @@ grant insert, update, delete on public.general_expenses to authenticated;
 grant select on public.profiles to authenticated;
 grant select, insert, delete on public.payments, public.savings_accounts, public.savings_entries,
       public.debts, public.debt_balances, public.debt_payments to authenticated;
-grant update (target_date) on public.debts to authenticated;
+grant update (target_date, daily_plan) on public.debts to authenticated;
 
 revoke all on function public.panel_usuarios(date) from public;
 grant execute on function public.panel_usuarios(date) to anon, authenticated;
-revoke all on function public.admin_set_status(uuid,text), public.admin_set_quota(uuid,numeric),
-       public.admin_copy_expenses(date,date) from public;
-grant execute on function public.admin_set_status(uuid,text), public.admin_set_quota(uuid,numeric),
-       public.admin_copy_expenses(date,date) to authenticated;
+revoke all on function public.admin_set_status(uuid,text), public.admin_copy_expenses(date,date) from public;
+grant execute on function public.admin_set_status(uuid,text), public.admin_copy_expenses(date,date) to authenticated;
 grant execute on function public.is_admin(), public.is_approved() to authenticated;
 
 -- =====================================================================

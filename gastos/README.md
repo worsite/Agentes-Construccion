@@ -4,15 +4,17 @@ Panel de gastos compartidos y pagos mensuales. Sitio estático (HTML + JS, sin b
 
 ## Qué hace
 
-- **Panel general (público, sin iniciar sesión):** meta de aportes del mes, gastos generales (gas, agua...) con estado Pagado/Pendiente y avance por persona (nombre, monto pagado, cuota y porcentaje). Selector de mes.
-- **Perfil privado (usuario aprobado):**
-  - **Pagos:** monto, método (efectivo/transferencia) y fecha (por defecto hoy, editable). Muestra acumulado del mes, método principal e historial. Los pagos suben al panel general (solo monto total; el método no se expone).
-  - **Ahorros:** cuentas con nombre y meta opcional, con aportes. Solo las ve su dueño.
-  - **Deudas:** nombre, valor y fecha del valor; nuevos valores por intereses, pagos a la deuda, barra de avance y proyección (por mes y por semana) para todas las deudas o una en concreto. Solo las ve su dueño.
-- **Registro:** nombre, usuario y contraseña; la solicitud queda *pendiente* hasta que el admin la aprueba.
-- **Admin (usuario `miguel`):** aprueba/rechaza solicitudes (ve solo el nombre), marca gastos como pagados, edita montos, agrega/elimina gastos, copia los gastos del mes anterior y define la cuota mensual de cada usuario. También usa su perfil privado como cualquiera.
+- **Panel general (público):** lo que **falta por pagar** del mes (gastos menos aportes de todos), la cuota de cada usuario, el mínimo por día y el avance por persona (ha pagado / debe / %). Cada pago registrado reduce lo que falta. Selector de mes.
+- **Reparto automático:** cuota = gastos del mes ÷ usuarios aprobados (redondeada hacia arriba); mínimo diario = cuota ÷ 25 días. El admin ya no fija cuotas.
+- **Perfil privado:**
+  - **Pagos:** monto, método y fecha (hoy por defecto, editable), acumulado del mes, método principal e historial.
+  - **Ingreso necesario:** cuánto generar al día (gastos compartidos + lo que elijas pagar cada día a cada deuda), si hoy cumpliste el mínimo y si vas al día (día N de 25).
+  - **Ahorros** y **Deudas** (privados; ni el admin los ve). Las deudas se ven plegadas: toca el nombre para el detalle.
+- **Sesión:** queda guardada en el dispositivo; no se vuelve a pedir la contraseña. Tras registrarse se conserva la sesión, así que al ser aprobado se entra directo.
+- **Tema:** interruptor claro/oscuro en la cabecera (recuerda tu elección; por defecto sigue al sistema).
+- **Admin (usuario `miguel`):** aprueba/rechaza solicitudes (ve solo el nombre), gestiona los gastos del mes (agregar, editar, marcar pagado, eliminar, copiar del mes anterior).
 
-Reglas de negocio: la cuota mensual la fija el admin por usuario; un pago cuenta para el mes de su fecha; el saldo de una deuda es el último valor registrado menos los pagos hechos desde ese registro (los anteriores ya están reflejados en el valor nuevo). Moneda: COP, solo enteros.
+Reglas: un pago cuenta para el mes de su fecha; el saldo de una deuda es el último valor registrado menos los pagos hechos desde ese registro. Moneda: COP, solo enteros.
 
 ## Puesta en marcha
 
@@ -23,7 +25,7 @@ Reglas de negocio: la cuota mensual la fija el admin por usuario; un pago cuenta
    update public.profiles set is_admin = true, status = 'approved' where username = 'miguel';
    ```
    Hazlo **antes** de compartir el enlace: el primero que registre `miguel` será el único candidato a admin, y el admin solo se concede con este SQL, nunca desde el navegador.
-4. Como Miguel: en **Admin** define la cuota de cada usuario y los gastos del mes.
+4. Como Miguel: en **Admin** registra los gastos del mes; la cuota de cada usuario se calcula sola.
 5. **Publicar en Netlify:** arrastra la carpeta `gastos/` (solo `index.html` es necesario; carga supabase-js desde jsdelivr).
 
 `index.html` ya trae la URL del proyecto y la clave **anon** (pública por diseño). Nunca pongas la clave `service_role` en el frontend.
@@ -42,14 +44,18 @@ El rol `is_admin` y el estado `status` no se pueden modificar desde el cliente; 
 
 ## Pruebas
 
-- `node gastos/tests/e2e.mjs`: 20 pruebas en Chromium con un Supabase **simulado** (`tests/mock-supabase.js`). Requiere `playwright` global.
+- `node gastos/tests/e2e.mjs`: 24 pruebas en Chromium con un Supabase **simulado** (`tests/mock-supabase.js`). Requiere `playwright` global.
 - `tests/rls-stub.sql` + `tests/rls-test.sql`: pruebas de permisos contra un Postgres local con un esquema `auth` simulado (ver orden: stub, `supabase/schema.sql`, test).
 
 **Pendiente de verificar contra el proyecto real** (el entorno de desarrollo no tenía acceso a Supabase): registro/inicio de sesión con Supabase Auth real, que el dominio del correo interno sea aceptado, y la ejecución del SQL en el editor de Supabase.
 
 ## Límites conocidos
 
-- La cuota nueva aplica a todos los meses (no hay historial de cuotas).
+- La cuota de un mes pasado se recalcula con los usuarios aprobados de hoy (no hay historial de cuotas).
 - Si Supabase rechaza el correo interno ("email address is invalid"), cambia `DOMINIO_CORREO` en `index.html` por un dominio con MX real.
 - No hay recuperación de contraseña (no hay correo real). El admin puede restablecerla desde Supabase > Authentication > Users.
 - Los montos son enteros en pesos; no se admiten centavos.
+
+## Actualizar desde la versión anterior
+
+Vuelve a ejecutar `supabase/schema.sql` completo: agrega la columna `daily_plan`, reemplaza `panel_usuarios` (cuota calculada) y elimina `admin_set_quota`.

@@ -1,3 +1,4 @@
+-- Roles de Supabase simulados. Si ya existen en tu Postgres de prueba, quita las dos primeras lineas.
 create role anon nologin; create role authenticated nologin;
 create schema auth;
 create table auth.users (id uuid primary key default gen_random_uuid(), email text, raw_user_meta_data jsonb default '{}');

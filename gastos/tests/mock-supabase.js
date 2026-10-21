@@ -3,7 +3,7 @@
   const uuid = () => 'id-' + Math.random().toString(36).slice(2) + Date.now().toString(36);
   const hoy = new Date(); const pad = n => String(n).padStart(2, '0');
   const mes = `${hoy.getFullYear()}-${pad(hoy.getMonth() + 1)}-01`;
-  const db = {
+  const db0 = {
     users: [{ id: 'u-miguel', username: 'miguel', password: 'clave1234' }, { id: 'u-ana', username: 'ana', password: 'clave1234' }],
     profiles: [
       { id: 'u-miguel', username: 'miguel', display_name: 'Miguel', status: 'approved', is_admin: true, monthly_quota: 100000, created_at: '2026-01-01T00:00:00Z' },
@@ -15,8 +15,14 @@
     ],
     payments: [], savings_accounts: [], savings_entries: [], debts: [], debt_balances: [], debt_payments: [],
   };
-  window.__db = db; window.__calls = [];
-  let session = null; const listeners = [];
+  let db = db0;
+  try { const g = localStorage.getItem('mock-db'); if (g) db = JSON.parse(g); } catch (e) {}
+  const guardar = () => { try { localStorage.setItem('mock-db', JSON.stringify(db)); } catch (e) {} };
+  Object.defineProperty(window, '__db', { get: () => db });
+  window.__calls = [];
+  let session = null; try { session = JSON.parse(localStorage.getItem('mock-session') || 'null'); } catch (e) {}
+  const setSes = x => { session = x; try { localStorage.setItem('mock-session', JSON.stringify(x)); } catch (e) {} };
+  const listeners = [];
   const priv = ['payments', 'savings_accounts', 'savings_entries', 'debts', 'debt_balances', 'debt_payments'];
   const me = () => session && session.user.id;
   const meProfile = () => db.profiles.find(p => p.id === me());
@@ -37,7 +43,7 @@
       then(ok, bad) { return run().then(ok, bad); },
     };
     async function run() {
-      window.__calls.push({ t, op: st.op });
+      window.__calls.push({ t, op: st.op }); setTimeout(guardar, 0);
       const err = m => ({ data: null, error: { message: m } });
       const match = r => st.filters.every(([c, v]) => r[c] === v);
       if (st.op === 'select') {
@@ -71,15 +77,16 @@
   const api = {
     from: builder,
     async rpc(name, a) {
-      window.__calls.push({ rpc: name });
+      window.__calls.push({ rpc: name }); setTimeout(guardar, 0);
       if (name === 'panel_usuarios') {
         const m = a.p_month.slice(0, 7);
-        return { data: db.profiles.filter(p => p.status === 'approved').map(p => ({ username: p.username, display_name: p.display_name, quota: p.monthly_quota,
+        const tot = db.general_expenses.filter(g => g.month.slice(0, 7) === m).reduce((x, g) => x + g.amount, 0);
+        const ap = db.profiles.filter(p => p.status === 'approved');
+        return { data: ap.map(p => ({ username: p.username, display_name: p.display_name, quota: Math.ceil(tot / ap.length),
           paid: db.payments.filter(x => x.user_id === p.id && x.paid_on.slice(0, 7) === m).reduce((s, x) => s + x.amount, 0) })), error: null };
       }
       if (!isAdmin()) return { data: null, error: { message: 'No autorizado' } };
       if (name === 'admin_set_status') { db.profiles.find(p => p.id === a.p_user).status = a.p_status; return { data: null, error: null }; }
-      if (name === 'admin_set_quota') { db.profiles.find(p => p.id === a.p_user).monthly_quota = a.p_quota; return { data: null, error: null }; }
       if (name === 'admin_copy_expenses') {
         const src = db.general_expenses.filter(g => g.month === a.p_from);
         src.forEach(g => db.general_expenses.push({ id: uuid(), month: a.p_to, name: g.name, amount: g.amount, paid: false, created_at: new Date().toISOString() }));
@@ -91,16 +98,16 @@
       async signInWithPassword({ email, password }) {
         const u = db.users.find(x => x.username + '@mailinator.com' === email);
         if (!u || u.password !== password) return { data: null, error: { message: 'Invalid login credentials' } };
-        session = { user: { id: u.id } }; return { data: { session }, error: null };
+        setSes({ user: { id: u.id } }); return { data: { session }, error: null };
       },
       async signUp({ email, password, options }) {
         const un = options.data.username;
         if (db.users.some(x => x.username === un)) return { data: null, error: { message: 'User already registered' } };
         const id = uuid(); db.users.push({ id, username: un, password });
         db.profiles.push({ id, username: un, display_name: options.data.display_name, status: 'pending', is_admin: false, monthly_quota: 0, created_at: new Date().toISOString() });
-        session = { user: { id } }; return { data: { session }, error: null };
+        setSes({ user: { id } }); return { data: { session }, error: null };
       },
-      async signOut() { session = null; return { error: null }; },
+      async signOut() { setSes(null); return { error: null }; },
       onAuthStateChange(cb) { listeners.push(cb); return { data: { subscription: { unsubscribe() {} } } }; },
     },
   };
