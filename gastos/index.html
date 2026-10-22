@@ -208,7 +208,7 @@ function toast(msg, malo) {
 }
 const traducir = e => {
   const m = (e && e.message) || String(e);
-  if (/Email not confirmed/i.test(m)) return 'Falta desactivar "Confirm email" en Supabase (ver README).';
+  if (/Email not confirmed/i.test(m)) return 'Tu correo interno no está confirmado. Ejecuta de nuevo schema.sql en Supabase (ver README).';
   if (/Invalid login credentials/i.test(m)) return 'Usuario o contraseña incorrectos.';
   if (/already registered|already been registered|duplicate key|profiles_username_uq/i.test(m)) return 'Ese nombre de usuario ya existe.';
   if (/Database error saving new user/i.test(m)) return 'No se pudo crear el perfil. Revisa que el usuario tenga 3-20 letras minúsculas, números o _.';

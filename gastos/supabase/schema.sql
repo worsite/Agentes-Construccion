@@ -128,6 +128,21 @@ drop trigger if exists on_auth_user_created on auth.users;
 create trigger on_auth_user_created after insert on auth.users
   for each row execute function public.handle_new_user();
 
+-- Los correos internos son ficticios: se confirman solos al crear el usuario, aunque en el panel de
+-- Supabase siga activada la opcion "Confirm email". Evita el error "Email not confirmed".
+create or replace function public.auto_confirm_user() returns trigger
+language plpgsql security definer set search_path = public as $$
+begin
+  if new.email_confirmed_at is null then new.email_confirmed_at := now(); end if;
+  return new;
+end $$;
+drop trigger if exists on_auth_user_autoconfirm on auth.users;
+create trigger on_auth_user_autoconfirm before insert on auth.users
+  for each row execute function public.auto_confirm_user();
+
+-- Confirma a los usuarios que ya se habian registrado sin confirmar.
+update auth.users set email_confirmed_at = now() where email_confirmed_at is null;
+
 -- Los pagos y gastos pagados guardan paid_at automaticamente.
 create or replace function public.set_paid_at() returns trigger
 language plpgsql as $$

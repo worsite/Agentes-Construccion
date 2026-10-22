@@ -18,7 +18,7 @@ Reglas: un pago cuenta para el mes de su fecha; el saldo de una deuda es el últ
 
 ## Puesta en marcha
 
-1. **Supabase > Authentication > Providers > Email:** desactiva **Confirm email** (los usuarios usan un correo interno ficticio `usuario@mailinator.com`, no reciben correos). Opcional: sube el largo mínimo de contraseña a 8.
+1. **Supabase > Authentication > Providers > Email:** desactiva **Confirm email** (recomendado; aunque quede activo, `schema.sql` confirma los correos solos con un trigger). Los usuarios usan un correo interno ficticio `usuario@mailinator.com`, no reciben correos). Opcional: sube el largo mínimo de contraseña a 8.
 2. **Supabase > SQL Editor:** pega todo `supabase/schema.sql` y ejecuta (se puede repetir sin romper nada).
 3. Abre la app, entra a **Crear perfil** y regístrate como usuario `miguel`. Después, en el SQL Editor:
    ```sql
