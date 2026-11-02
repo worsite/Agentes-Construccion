@@ -6,13 +6,16 @@ Panel de gastos compartidos y pagos mensuales. Sitio estático (HTML + JS, sin b
 
 - **Panel general (público):** lo que **falta por pagar** del mes (gastos menos aportes de todos), la cuota de cada usuario, el mínimo por día y el avance por persona (ha pagado / debe / %). Cada pago registrado reduce lo que falta. Selector de mes.
 - **Reparto automático:** cuota = gastos del mes ÷ usuarios aprobados (redondeada hacia arriba); mínimo diario = cuota ÷ 25 días. El admin ya no fija cuotas.
-- **Perfil privado:**
-  - **Pagos:** monto, método y fecha (hoy por defecto, editable), acumulado del mes, método principal e historial.
-  - **Ingreso necesario:** cuánto generar al día (gastos compartidos + lo que elijas pagar cada día a cada deuda), si hoy cumpliste el mínimo y si vas al día (día N de 25).
+- **Pensado para el celular:** barra inferior fija con 5 accesos (Panel, Cuenta, **Pagar**, Ahorros, Deudas); en pantallas grandes pasa al menú superior.
+  - **Pagar:** una sola pantalla con monto grande (teclado numérico y puntos de miles automáticos), atajos (mínimo de hoy, lo que debo a la fecha, 10.000/20.000/50.000), método y fecha de hoy por defecto (botón para cambiarla). Al confirmar muestra cuánto falta del mes.
+  - **Cuenta:** *Debes a la fecha* (o "Estás al día"), cuota del mes, lo que has pagado y lo que falta; cumplimiento de hoy; **ingreso necesario** por día (gastos compartidos + el pago diario que elijas para cada deuda) e historial de pagos.
   - **Ahorros** y **Deudas** (privados; ni el admin los ve). Las deudas se ven plegadas: toca el nombre para el detalle.
+- **Panel general:** cada persona aparece con su avance y una etiqueta "Al día" o "Debe $X a la fecha".
 - **Sesión:** queda guardada en el dispositivo; no se vuelve a pedir la contraseña. Tras registrarse se conserva la sesión, así que al ser aprobado se entra directo.
 - **Tema:** interruptor claro/oscuro en la cabecera (recuerda tu elección; por defecto sigue al sistema).
 - **Admin (usuario `miguel`):** aprueba/rechaza solicitudes (ve solo el nombre), gestiona los gastos del mes (agregar, editar, marcar pagado, eliminar, copiar del mes anterior).
+
+"A la fecha": deberías llevar pagado (mínimo diario × día del mes, hasta 25) y se compara con lo que llevas pagado.
 
 Reglas: un pago cuenta para el mes de su fecha; el saldo de una deuda es el último valor registrado menos los pagos hechos desde ese registro. Moneda: COP, solo enteros.
 
@@ -44,7 +47,7 @@ El rol `is_admin` y el estado `status` no se pueden modificar desde el cliente; 
 
 ## Pruebas
 
-- `node gastos/tests/e2e.mjs`: 24 pruebas en Chromium con un Supabase **simulado** (`tests/mock-supabase.js`). Requiere `playwright` global.
+- `node gastos/tests/e2e.mjs`: 31 pruebas en Chromium con un Supabase **simulado** (`tests/mock-supabase.js`). Requiere `playwright` global.
 - `tests/rls-stub.sql` + `tests/rls-test.sql`: pruebas de permisos contra un Postgres local con un esquema `auth` simulado (ver orden: stub, `supabase/schema.sql`, test).
 
 **Pendiente de verificar contra el proyecto real** (el entorno de desarrollo no tenía acceso a Supabase): registro/inicio de sesión con Supabase Auth real, que el dominio del correo interno sea aceptado, y la ejecución del SQL en el editor de Supabase.

@@ -113,47 +113,87 @@ await prueba('admin copia gastos del mes anterior', async () => {
 });
 await salir();
 
-console.log('Perfil privado: pagos');
-await prueba('registrar pago con fecha de hoy por defecto, y fecha modificada', async () => {
-  await login('ana'); await ir('#/perfil');
-  assert.match(await txt(), /Tu mínimo diario es \$\s?1\.600/);
-  assert.equal(await page.inputValue('form[data-form=pago] input[name=fecha]'), hoyLocal);
-  await page.fill('form[data-form=pago] input[name=monto]', '30.000'); await page.check('form[data-form=pago] input[value=transferencia]');
-  await page.click('form[data-form=pago] button[type=submit]'); await page.waitForTimeout(250);
-  await page.fill('form[data-form=pago] input[name=monto]', '10000');
-  await page.fill('form[data-form=pago] input[name=fecha]', hoyLocal.slice(0, 8) + '01'); await page.click('form[data-form=pago] button[type=submit]'); await page.waitForTimeout(250);
+console.log('Pagar (movil)');
+await prueba('barra inferior con 5 accesos, boton Pagar destacado y areas tactiles de 44 px', async () => {
+  await login('ana'); await ir('#/perfil?t=pagar');
+  assert.equal(await page.locator('#bnav a').count(), 5);
+  assert.equal(await page.locator('#bnav a.cta').count(), 1);
+  const tops = await page.$$eval('#bnav a', els => els.map(e => Math.round(e.getBoundingClientRect().bottom)));
+  assert.equal(new Set(tops).size, 1, 'los 5 accesos deben quedar en una sola fila: ' + tops);
+  assert.equal(await page.evaluate(() => { const r = document.getElementById('bnav').getBoundingClientRect(); return r.bottom <= innerHeight + 1 && r.height < 100; }), true);
+  const cajas = await page.$$eval('#bnav a, #app .btn, #app .chips2 button', els => els.filter(e => e.offsetParent).map(e => { const r = e.getBoundingClientRect(); return [e.textContent.trim().slice(0, 20), Math.round(r.width), Math.round(r.height)]; }));
+  const chicos = cajas.filter(([, w, h]) => h < 44 || w < 44);
+  assert.deepEqual(chicos, []);
+});
+await prueba('la pantalla Pagar muestra debes a la fecha / hoy / falta y atajos', async () => {
   const t = await txt();
-  assert.match(t, /\$\s?40\.000/); assert.match(t, /Método principal del mes:\s*Transferencia/); assert.match(t, /100% de tu cuota de \$\s?40\.000/);
+  assert.match(t, /Debes a la fecha/); assert.match(t, /Hoy llevas/); assert.match(t, /Falta del mes/);
+  assert.match(t, /Mínimo de hoy/); assert.match(t, /\$\s?10\.000/); assert.match(t, /\$\s?50\.000/);
+  assert.equal(await page.locator('#fechaIn').isVisible(), false);          // la fecha de hoy va por defecto, oculta
+  assert.match(await page.locator('#fechaTxt').innerText(), /^Hoy/);
+});
+await prueba('un atajo rellena el monto con puntos de miles; el teclado es numerico', async () => {
+  assert.equal(await page.getAttribute('#monto', 'inputmode'), 'numeric');
+  await page.click('.chips2 button >> nth=-1'); assert.equal(await page.inputValue('#monto'), '50.000');
+  await page.fill('#monto', ''); await page.type('#monto', '1234567'); assert.equal(await page.inputValue('#monto'), '1.234.567');
+  await page.fill('#monto', '');
+});
+await prueba('registrar pago: hoy por defecto, fecha modificable, aviso con lo que falta', async () => {
+  assert.equal(await page.inputValue('#fechaIn input'), hoyLocal);
+  await page.fill('#monto', '30.000'); await page.check('form[data-form=pago] input[value=transferencia]');
+  await page.click('form[data-form=pago] button[type=submit]'); await page.waitForTimeout(300);
+  let t = await txt(); assert.match(t, /Pago de \$\s?30\.000 registrado/); assert.match(t, /Te faltan \$\s?10\.000 del mes/);
+  await page.fill('#monto', '10000'); await page.click('button[data-action=fecha]'); assert.equal(await page.locator('#fechaIn').isVisible(), true);
+  await page.fill('#fechaIn input', hoyLocal.slice(0, 8) + '01'); assert.doesNotMatch(await page.locator('#fechaTxt').innerText(), /^Hoy/);
+  await page.click('form[data-form=pago] button[type=submit]'); await page.waitForTimeout(300);
+  t = await txt(); assert.match(t, /Pago de \$\s?10\.000 registrado/); assert.match(t, /Cuota del mes completa/);
 });
 await prueba('monto invalido muestra error y no guarda', async () => {
   const antes = await page.evaluate(() => window.__db.payments.length);
-  await page.fill('form[data-form=pago] input[name=monto]', 'abc'); await page.click('form[data-form=pago] button[type=submit]');
+  await page.fill('#monto', 'abc'); await page.click('form[data-form=pago] button[type=submit]');
   assert.match(await txt(), /monto válido/); assert.equal(await page.evaluate(() => window.__db.payments.length), antes);
 });
 await prueba('cada pago reduce lo que falta en el panel general (sin exponer el metodo)', async () => {
   await ir('#/'); const t = await txt();
   assert.match(t, /Falta por pagar este mes\s*\$\s?80\.000/);     // 120.000 - 40.000
-  assert.match(t, /Ha pagado \$\s?40\.000 · Debe \$\s?40\.000/); assert.doesNotMatch(t, /Transferencia|Efectivo/);
+  assert.match(t, /Pagó \$\s?40\.000 de \$\s?40\.000/); assert.doesNotMatch(t, /Transferencia|Efectivo/);
+});
+await prueba('el panel marca quien esta al dia y quien debe a la fecha', async () => {
+  const t = await txt(); assert.match(t, /Al día/); assert.match(t, /Debe \$\s?[\d.]+ a la fecha/);
 });
 
-console.log('Ingreso necesario');
-await prueba('muestra minimo diario de gastos, cumplimiento de hoy y avance', async () => {
-  await ir('#/perfil?t=ingreso'); const t = await txt();
-  assert.match(t, /Debes generar al día\s*\$\s?1\.600/);
-  assert.match(t, /Cumpliste el mínimo/);                          // pago de hoy 30.000 >= 1.600
-  assert.match(t, /Entre 3 usuarios/); assert.match(t, /Repartido en\s*25 días/);
-  assert.match(t, /Vas al día/);
+console.log('Mi cuenta: cuanto debo, cuanto he pagado, cuanto falta');
+await prueba('resumen claro: cuota, pagado, falta y estado a la fecha', async () => {
+  await ir('#/perfil'); const t = await txt();
+  assert.match(t, /Estás al día/); assert.match(t, /Cuota del mes\s*\$\s?40\.000/); assert.match(t, /Has pagado\s*\$\s?40\.000/); assert.match(t, /Falta del mes\s*\$\s?0/);
+  assert.match(t, /Método principal del mes\s*Transferencia/);
+  assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
+});
+await prueba('ingreso necesario: minimo diario, hoy cumplido y desglose', async () => {
+  const t = await txt();
+  assert.match(t, /Debes generar al día\s*\$\s?1\.600/); assert.match(t, /Cumpliste el mínimo de hoy/);
+  assert.match(t, /Gastos compartidos[\s\S]*\$\s?1\.600/);
 });
 await prueba('crear deuda y elegir cuanto pagar al dia suma al ingreso necesario', async () => {
   await ir('#/perfil?t=deudas');
   await page.fill('form[data-form=deuda] input[name=nombre]', 'Tarjeta'); await page.fill('form[data-form=deuda] input[name=monto]', '1.000.000'); await page.click('form[data-form=deuda] button[type=submit]'); await page.waitForTimeout(250);
-  await ir('#/perfil?t=ingreso');
+  await ir('#/perfil');
   await page.fill('form[data-form=plan] input[name=monto]', '20.000'); await page.click('form[data-form=plan] button[type=submit]'); await page.waitForTimeout(250);
   const t = await txt();
-  assert.match(t, /Debes generar al día\s*\$\s?21\.600/); assert.match(t, /\$\s?1\.600 para los gastos compartidos \+ \$\s?20\.000 para tus deudas/);
-  assert.match(t, /~50 días/);
+  assert.match(t, /Debes generar al día\s*\$\s?21\.600/); assert.match(t, /Mis deudas\s*\$\s?20\.000/); assert.match(t, /~50 días/);
   await page.fill('form[data-form=plan] input[name=monto]', '0'); await page.click('form[data-form=plan] button[type=submit]'); await page.waitForTimeout(250);
   assert.match(await txt(), /Debes generar al día\s*\$\s?1\.600/);
+});
+await prueba('usuario atrasado ve cuanto debe a la fecha', async () => {
+  await salir(); await login('miguel'); await ir('#/perfil'); const t = await txt();
+  assert.match(t, /Debes a la fecha\s*\$\s?[\d.]+/); assert.doesNotMatch(t, /Estás al día/);
+  assert.match(t, /Aún no cumples el mínimo de hoy/);
+  await salir(); await login('ana');
+});
+await prueba('barra inferior oculta en escritorio y menu superior visible', async () => {
+  await page.setViewportSize({ width: 1000, height: 800 });
+  assert.equal(await page.locator('#bnav').isVisible(), false); assert.equal(await page.locator('#nav a.dsk >> text=Pagar').isVisible(), true);
+  await page.setViewportSize({ width: 390, height: 800 });
 });
 
 console.log('Perfil privado: ahorros y deudas');

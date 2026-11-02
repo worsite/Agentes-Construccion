@@ -2,7 +2,7 @@
 <html lang="es">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src https://cdn.jsdelivr.net 'unsafe-inline'; style-src 'unsafe-inline'; connect-src https://rpavathmxclihhswteiv.supabase.co; img-src data:; base-uri 'none'; form-action 'none'">
 <title>Cuentas Claras</title>
 <meta name="description" content="Panel de gastos compartidos, aportes diarios y metas.">
@@ -73,6 +73,7 @@ main{padding:22px 0 72px}
 .muted{color:var(--ink-soft)} .small{font-size:.875rem}
 .row{display:flex;gap:12px;align-items:center;flex-wrap:wrap}
 .row.between{justify-content:space-between}
+.row.nw{flex-wrap:nowrap;align-items:flex-start;gap:10px}.row.nw>span:first-child{flex:1;min-width:0}.row.nw .num{white-space:nowrap}
 .num{font-variant-numeric:tabular-nums;font-weight:700}
 .big{font-size:1.85rem;font-weight:800;font-variant-numeric:tabular-nums;letter-spacing:-.02em}
 label{display:block;font-weight:600;font-size:.9rem;margin-bottom:4px}
@@ -124,6 +125,44 @@ details.debt[open]>summary .chev{transform:rotate(180deg)}
 details.debt .body{padding:0 16px 16px;border-top:1px solid var(--line);padding-top:14px}
 details.mini summary{cursor:pointer;min-height:44px;display:flex;align-items:center;font-weight:700}
 .sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
+
+/* ---- Movil primero: barra inferior, pantalla Pagar, resumen ---- */
+body{padding-bottom:calc(86px + env(safe-area-inset-bottom))}
+.bottom{position:fixed;left:0;right:0;bottom:0;z-index:6;display:flex;flex-wrap:nowrap;justify-content:space-around;align-items:flex-end;background:color-mix(in srgb,var(--surface) 94%,transparent);backdrop-filter:blur(12px);border-top:1px solid var(--line);padding:6px 6px calc(6px + env(safe-area-inset-bottom))}
+.bottom a{flex:1 1 0;min-width:0;min-height:56px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;font-size:.72rem;font-weight:700;color:var(--ink-soft);text-decoration:none;border-radius:12px}
+.bottom a[aria-current="page"]{color:var(--primary-dark)}
+.bottom a[aria-current="page"] svg{stroke:var(--primary-dark)}
+.bottom a.cta{color:var(--btn-ink)}
+.bottom a.cta .pay{width:52px;height:52px;margin-top:-22px;border-radius:50%;display:grid;place-items:center;background:linear-gradient(135deg,var(--primary),var(--blue));box-shadow:0 6px 18px rgba(29,95,214,.35);color:var(--btn-ink)}
+.bottom a.cta .pay svg{width:26px;height:26px}
+.bottom a.cta span.t{color:var(--ink-soft)}
+.bottom a.cta[aria-current="page"] span.t{color:var(--primary-dark)}
+.lbl{display:none}.dsk{display:none}
+@media(min-width:720px){.bottom{display:none}body{padding-bottom:0}.lbl{display:inline}.dsk{display:inline-flex}}
+.iconbtn{width:44px;padding:0!important;justify-content:center}
+.trio{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:14px}
+.trio>div{background:rgba(255,255,255,.18);border-radius:12px;padding:10px 8px;text-align:center}
+.trio .k{font-size:.72rem;color:rgba(255,255,255,.9);line-height:1.2}
+.trio .v{font-weight:800;font-size:1rem;font-variant-numeric:tabular-nums;margin-top:2px}
+.btn.light{background:#fff;color:#0A4F6E;width:100%;margin-top:14px}
+.btn.block{width:100%;min-height:54px;font-size:1.05rem}
+.amount{display:flex;align-items:center;gap:8px;border:2px solid var(--line);border-radius:16px;padding:6px 16px;background:var(--surface)}
+.amount:focus-within{border-color:var(--primary)}
+.amount span{font-size:1.8rem;font-weight:800;color:var(--ink-soft)}
+.amount input{border:0;min-height:64px;font-size:2.2rem;font-weight:800;padding:0;background:transparent;font-variant-numeric:tabular-nums;letter-spacing:-.02em}
+.amount input:focus-visible{outline:none}
+.chips2{display:flex;flex-wrap:wrap;gap:8px;margin:10px 0 16px}
+.chips2 button{min-height:44px;padding:0 14px;border-radius:999px;border:1.5px solid var(--line);background:var(--surface);color:var(--ink);font:inherit;font-weight:700;cursor:pointer}
+.chips2 button:hover{border-color:var(--primary);background:var(--tint)}
+.chips2 small{display:block;font-weight:600;color:var(--ink-soft);font-size:.7rem;line-height:1}
+.datebox{display:flex;align-items:center;justify-content:space-between;gap:10px;border:1.5px solid var(--line);border-radius:12px;padding:6px 6px 6px 14px;margin-bottom:16px}
+.stickybar{position:sticky;bottom:calc(84px + env(safe-area-inset-bottom));padding:10px 0 2px;background:linear-gradient(180deg,transparent,var(--bg) 30%)}
+@media(min-width:720px){.stickybar{position:static;background:none}}
+.banner{display:flex;gap:12px;align-items:center;background:var(--ok-tint);color:var(--ok);border-radius:14px;padding:14px;margin-bottom:16px;font-weight:700}
+.steps{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:16px}
+.steps>div{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:10px;text-align:center}
+.steps .k{font-size:.72rem;color:var(--ink-soft);line-height:1.2}.steps .v{font-weight:800;font-variant-numeric:tabular-nums}
+.sect{font-size:.8rem;text-transform:uppercase;letter-spacing:.06em;color:var(--ink-soft);font-weight:800;margin:22px 2px 8px}
 </style>
 </head>
 <body>
@@ -133,6 +172,7 @@ details.mini summary{cursor:pointer;min-height:44px;display:flex;align-items:cen
   <button id="tema" class="btn ghost" type="button" aria-label="Cambiar entre modo claro y oscuro" style="min-height:44px;width:44px;padding:0"></button>
 </div></header>
 <main><div class="wrap" id="app" aria-live="polite"><p class="muted">Cargando...</p></div></main>
+<nav id="bnav" class="bottom" aria-label="Navegación principal"></nav>
 <div id="toast" role="status" aria-live="polite"></div>
 <noscript><div class="wrap"><p>Esta aplicación necesita JavaScript.</p></div></noscript>
 
@@ -182,6 +222,12 @@ const ICONOS = {
   alerta: '<path d="M12 9v4M12 17h.01"/><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/>',
   chevron: '<path d="m6 9 6 6 6-6"/>',
   grafica: '<path d="M3 3v18h18"/><path d="m7 15 4-4 3 3 5-6"/>',
+  inicio: '<path d="m3 11 9-8 9 8"/><path d="M5 10v10h14V10"/>',
+  mas: '<path d="M12 5v14M5 12h14"/>',
+  tarjeta: '<rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2 10h20"/>',
+  escudo: '<path d="M12 3 4 6v6c0 5 3.5 8 8 9 4.5-1 8-4 8-9V6z"/>',
+  salir: '<path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><path d="m16 17 5-5-5-5M21 12H9"/>',
+  usuario: '<circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/>',
 };
 const ico = (n, cls = '') => `<svg class="i ${cls}" viewBox="0 0 24 24" aria-hidden="true">${ICONOS[n]}</svg>`;
 const COLORES_AVATAR = ['#0A7D70', '#1D5FD6', '#B45309', '#C8382E', '#6D3FC8', '#0E7490'];
@@ -239,7 +285,7 @@ document.getElementById('tema').addEventListener('click', () => {
 pintarTema();
 
 /* ===== Estado ===== */
-const S = { user: null, profile: null, mes: mesDe(hoy()), tab: 'pagos', debtSel: 'todas', debtFecha: '', abiertas: new Set() };
+const S = { user: null, profile: null, mes: mesDe(hoy()), tab: 'cuenta', ultimo: null, debtSel: 'todas', debtFecha: '', abiertas: new Set() };
 
 async function cargarSesion() {
   const { data } = await sb.auth.getSession();
@@ -253,6 +299,13 @@ async function cargarSesion() {
 const aprobado = () => S.profile && S.profile.status === 'approved';
 const esAdmin = () => aprobado() && S.profile.is_admin;
 
+/** Cuanto deberia llevar pagado cada usuario a hoy en el mes `mes` (mes pasado: toda la cuota; futuro: nada). */
+function aFecha(mes, r) {
+  const act = mesDe(hoy());
+  if (mes < act) return r.cuota;
+  if (mes > act) return 0;
+  return Math.min(r.cuota, r.diaria * Math.min(new Date().getDate(), DIAS_META));
+}
 /** Reparto: gastos del mes entre usuarios aprobados; el minimo diario sale de dividir la cuota en DIAS_META. */
 function reparto(usuarios, gastos) {
   const total = gastos.reduce((a, g) => a + Number(g.amount), 0);
@@ -268,20 +321,31 @@ function ruta() {
   return { path, tab: new URLSearchParams(qs || '').get('t') };
 }
 function pintarNav(path) {
-  const a = (href, txt, p) => `<a href="${href}"${path === p ? ' aria-current="page"' : ''}>${txt}</a>`;
-  let h = a('#/', 'Panel', '/');
+  const { tab } = ruta();
+  const t = tab || 'cuenta';
+  const a = (href, txt, activo, cls = '') => `<a href="${href}"${activo ? ' aria-current="page"' : ''} class="${cls}">${txt}</a>`;
+  let h = a('#/', 'Panel', path === '/', 'dsk');
+  let b = '';
   if (S.user) {
-    h += a('#/perfil', 'Mi perfil', '/perfil');
-    if (esAdmin()) h += a('#/admin', 'Admin', '/admin');
-    h += `<button type="button" data-action="salir">Salir</button>`;
+    const en = path === '/perfil';
+    h += a('#/perfil', 'Mi cuenta', en && t === 'cuenta', 'dsk') + a('#/perfil?t=pagar', 'Pagar', en && t === 'pagar', 'dsk')
+       + a('#/perfil?t=ahorros', 'Ahorros', en && t === 'ahorros', 'dsk') + a('#/perfil?t=deudas', 'Deudas', en && t === 'deudas', 'dsk');
+    if (esAdmin()) h += `<a href="#/admin"${path === '/admin' ? ' aria-current="page"' : ''} class="iconbtn" aria-label="Administración">${ico('escudo')}<span class="lbl">Admin</span></a>`;
+    h += `<button type="button" data-action="salir" class="iconbtn" aria-label="Salir">${ico('salir')}<span class="lbl">Salir</span></button>`;
+    const item = (href, txt, icono, activo, cls = '') => `<a href="${href}"${activo ? ' aria-current="page"' : ''} class="${cls}">${cls === 'cta' ? `<span class="pay">${ico(icono)}</span>` : ico(icono)}<span class="t">${txt}</span></a>`;
+    b = item('#/', 'Panel', 'inicio', path === '/') + item('#/perfil', 'Cuenta', 'billetera', en && t === 'cuenta')
+      + item('#/perfil?t=pagar', 'Pagar', 'mas', en && t === 'pagar', 'cta')
+      + item('#/perfil?t=ahorros', 'Ahorros', 'meta', en && t === 'ahorros') + item('#/perfil?t=deudas', 'Deudas', 'tarjeta', en && t === 'deudas');
   } else {
-    h += a('#/ingresar', 'Ingresar', '/ingresar');
+    h += a('#/ingresar', 'Ingresar', path === '/ingresar');
   }
   document.getElementById('nav').innerHTML = h;
+  const bn = document.getElementById('bnav'); bn.innerHTML = b; bn.hidden = !b;
 }
 async function render() {
   const { path, tab } = ruta();
-  if (tab && ['pagos', 'ingreso', 'ahorros', 'deudas'].includes(tab)) S.tab = tab;
+  const mapa = { pagos: 'cuenta', ingreso: 'cuenta' };
+  S.tab = ['cuenta', 'pagar', 'ahorros', 'deudas'].includes(tab) ? tab : (mapa[tab] || 'cuenta');
   pintarNav(path);
   try {
     if (path === '/ingresar') return vistaLogin();
@@ -332,10 +396,11 @@ async function vistaPanel() {
           <p class="muted small">Servicios ya pagados: ${money(gPagado)} de ${money(r.total)}</p>`
           : `<div class="empty">No hay gastos registrados para este mes.</div>`}</section>
       <section class="card"><h2>Avance por persona</h2>
-        ${usuarios.length ? `<ul class="list">${usuarios.map(u => `<li>
+        ${usuarios.length ? `<ul class="list">${usuarios.map(u => { const deb = Math.max(0, aFecha(m, r) - Number(u.paid)); return `<li>
           <div class="row between"><span class="row" style="gap:10px">${avatar(u.display_name)}<strong>${esc(u.display_name)}</strong></span><span class="num">${pctTxt(Number(u.paid), Number(u.quota))}</span></div>
           <div style="margin-top:8px">${bar(Number(u.paid), Number(u.quota), 'Avance de ' + u.display_name)}</div>
-          <p class="muted small">Ha pagado ${money(u.paid)} · Debe ${money(u.quota)}</p></li>`).join('')}</ul>`
+          <div class="row between" style="margin-top:6px"><span class="muted small">Pagó ${money(u.paid)} de ${money(u.quota)}</span>
+          <span class="pill ${deb === 0 ? 'ok' : 'no'}">${deb === 0 ? 'Al día' : 'Debe ' + money(deb) + ' a la fecha'}</span></div></li>`; }).join('')}</ul>`
           : `<div class="empty">Aún no hay usuarios aprobados.</div>`}</section>
     </div>${cta}`;
 }
@@ -384,17 +449,16 @@ async function vistaPerfil() {
       ${pend ? '<button class="btn" data-action="reintentar">Revisar si ya me aprobaron</button>' : ''}</div>`;
     return;
   }
-  const tabs = [['pagos', 'Pagos'], ['ingreso', 'Ingreso necesario'], ['ahorros', 'Ahorros'], ['deudas', 'Deudas']];
-  const cuerpo = S.tab === 'ahorros' ? await tabAhorros() : S.tab === 'deudas' ? await tabDeudas() : S.tab === 'ingreso' ? await tabIngreso() : await tabPagos();
-  $app.innerHTML = `<h1>Mi perfil · ${esc(S.profile.display_name)}</h1>
-    <div class="tabs" role="navigation" aria-label="Secciones">${tabs.map(([k, t]) => `<a href="#/perfil?t=${k}" ${S.tab === k ? 'aria-current="true"' : ''}>${t}</a>`).join('')}</div>${cuerpo}`;
+  const titulos = { cuenta: 'Mi cuenta', pagar: 'Registrar pago', ahorros: 'Mis ahorros', deudas: 'Mis deudas' };
+  const cuerpo = S.tab === 'ahorros' ? await tabAhorros() : S.tab === 'deudas' ? await tabDeudas() : S.tab === 'pagar' ? await vistaPagar() : await vistaCuenta();
+  $app.innerHTML = `<div class="row between" style="margin-bottom:12px"><h1 style="margin:0">${titulos[S.tab]}</h1><span class="muted small">${esc(S.profile.display_name)}</span></div>${cuerpo}`;
 }
 
-const campoMetodo = (id = 'm') => `<div class="field"><label id="lm-${id}">Método</label>
+const campoMetodo = (id = 'm') => `<div class="field"><label id="lm-${id}">Método de pago</label>
   <div class="seg" role="radiogroup" aria-labelledby="lm-${id}">
     <label><input type="radio" name="metodo" value="efectivo" checked><span>Efectivo</span></label>
     <label><input type="radio" name="metodo" value="transferencia"><span>Transferencia</span></label></div></div>`;
-const campoMonto = (id = 'monto') => `<div class="field"><label for="${id}">Monto (COP)</label><input id="${id}" name="monto" inputmode="numeric" autocomplete="off" placeholder="50.000" required></div>`;
+const campoMonto = (id = 'monto') => `<div class="field"><label for="${id}">Monto (COP)</label><input id="${id}" name="monto" inputmode="numeric" autocomplete="off" placeholder="50.000" data-fmt required></div>`;
 const campoFecha = (id = 'fecha', label = 'Fecha') => `<div class="field"><label for="f-${id}">${label}</label><input id="f-${id}" name="fecha" type="date" value="${hoy()}" max="2100-12-31" required></div>`;
 
 /** Datos del reparto del mes actual para el perfil. */
@@ -406,92 +470,109 @@ async function datosReparto() {
   ]);
   return { m, ...reparto(usuarios, gastos) };
 }
-
-async function tabPagos() {
-  const [pagos, rp] = await Promise.all([
-    q(sb.from('payments').select('*').order('paid_on', { ascending: false }).order('created_at', { ascending: false })),
-    datosReparto(),
-  ]);
-  const delMes = pagos.filter(p => enMes(p.paid_on, rp.m));
-  const totMes = sumar(delMes);
-  const ef = sumar(delMes.filter(p => p.method === 'efectivo'));
-  const tr = sumar(delMes.filter(p => p.method === 'transferencia'));
-  const principal = !delMes.length ? 'Sin pagos este mes' : ef === tr ? 'Empate' : ef > tr ? 'Efectivo' : 'Transferencia';
-  return `<div class="grid two">
-    <section class="card"><h2>Registrar pago</h2>
-      ${rp.diaria > 0 ? `<p class="muted small">Tu mínimo diario es <strong>${money(rp.diaria)}</strong>.</p>` : ''}
-      <form data-form="pago" novalidate>
-        ${campoMonto()}${campoMetodo()}${campoFecha()}
-        <p class="err" data-err hidden></p>
-        <button class="btn" type="submit">Confirmar pago</button>
-      </form></section>
-    <section class="card"><h2>${esc(nombreMes(rp.m))}</h2>
-      <div class="muted small">Acumulado del mes</div><div class="big">${money(totMes)}</div>
-      ${bar(totMes, rp.cuota, 'Avance de tu cuota')}
-      <p class="muted small">${rp.cuota > 0 ? `${pctTxt(totMes, rp.cuota)} de tu cuota de ${money(rp.cuota)}` : 'Aún no hay gastos registrados este mes.'}</p>
-      <p><strong>Método principal del mes:</strong> ${principal}</p>
-      <p class="muted small">Efectivo ${money(ef)} · Transferencia ${money(tr)}</p></section>
-  </div>
-  <section class="card" style="margin-top:16px"><h2>Historial de pagos</h2>
-    ${pagos.length ? `<ul class="list">${pagos.map(p => `<li class="row between"><span><span class="num">${money(p.amount)}</span>
-      <span class="muted"> · ${p.method === 'efectivo' ? 'Efectivo' : 'Transferencia'} · ${esc(fechaCorta(p.paid_on))}</span></span>
-      <button class="btn danger sm" data-action="del" data-t="payments" data-id="${esc(p.id)}" aria-label="Eliminar pago de ${esc(money(p.amount))}">Eliminar</button></li>`).join('')}</ul>`
-      : `<div class="empty">Todavía no has registrado pagos.</div>`}</section>`;
+/** Situacion del usuario en el mes actual: lo que deberia llevar a hoy, lo que lleva y lo que falta. */
+function situacion(rp, pagos) {
+  const totMes = sumar(pagos.filter(p => enMes(p.paid_on, rp.m)));
+  const dia = Math.min(new Date().getDate(), DIAS_META);
+  const esperado = Math.min(rp.cuota, rp.diaria * dia);
+  return { totMes, dia, esperado, debeFecha: Math.max(0, esperado - totMes), faltaMes: Math.max(0, rp.cuota - totMes),
+           hoyPagado: sumar(pagos.filter(p => p.paid_on === hoy())) };
 }
 
-/* --- Ingreso necesario --- */
-async function tabIngreso() {
+/* --- Mi cuenta: cuanto debo, cuanto he pagado, cuanto falta --- */
+async function vistaCuenta() {
   const [pagos, rp, deudas, balances, dpagos] = await Promise.all([
-    q(sb.from('payments').select('*')),
+    q(sb.from('payments').select('*').order('paid_on', { ascending: false }).order('created_at', { ascending: false })),
     datosReparto(),
     q(sb.from('debts').select('*').order('created_at')),
     q(sb.from('debt_balances').select('*')),
     q(sb.from('debt_payments').select('*')),
   ]);
-  const t = hoy();
-  const delMes = pagos.filter(p => enMes(p.paid_on, rp.m));
-  const totMes = sumar(delMes);
-  const hoyPagado = sumar(pagos.filter(p => p.paid_on === t));
-  const dia = Math.min(new Date().getDate(), DIAS_META);
-  const esperado = rp.diaria * dia;
-  const diferencia = totMes - esperado;
+  const st = situacion(rp, pagos);
   const est = Object.fromEntries(deudas.map(d => [d.id, estadoDeuda(d, balances, dpagos)]));
   const conPlan = deudas.filter(d => Number(d.daily_plan) > 0 && est[d.id].resta > 0);
   const deudaDia = sumar(conPlan, d => d.daily_plan);
-  const cumpleHoy = rp.diaria > 0 && hoyPagado >= rp.diaria;
+  const cumpleHoy = rp.diaria > 0 && st.hoyPagado >= rp.diaria;
+  const alDia = st.debeFecha === 0;
+  const ef = sumar(pagos.filter(p => enMes(p.paid_on, rp.m) && p.method === 'efectivo'));
+  const tr = st.totMes - ef;
+  const principal = !st.totMes ? 'Sin pagos este mes' : ef === tr ? 'Empate' : ef > tr ? 'Efectivo' : 'Transferencia';
 
-  return `<section class="hero" aria-label="Ingreso diario necesario">
-      <div class="muted">Debes generar al día</div>
-      <div class="big">${money(rp.diaria + deudaDia)}</div>
-      <div class="muted small">${money(rp.diaria)} para los gastos compartidos${deudaDia ? ` + ${money(deudaDia)} para tus deudas` : ''}</div>
-      <div class="chips">
-        <div class="chip"><div class="muted small">Gastos del mes</div><div class="num">${money(rp.total)}</div></div>
-        <div class="chip"><div class="muted small">Entre ${rp.n} usuarios</div><div class="num">${money(rp.cuota)} c/u</div></div>
-        <div class="chip"><div class="muted small">Repartido en</div><div class="num">${DIAS_META} días</div></div>
-      </div></section>
-    <div class="grid two">
-      <section class="card"><div class="tile"><span class="ic ${cumpleHoy ? 'ok' : 'amber'}">${ico(cumpleHoy ? 'check' : 'alerta')}</span>
-        <div><h2 style="margin:0">Hoy</h2><span class="pill ${cumpleHoy ? 'ok' : 'pend'}">${rp.diaria === 0 ? 'Sin gastos registrados' : cumpleHoy ? 'Cumpliste el mínimo' : 'Pendiente'}</span></div></div>
-        <div class="big" style="margin-top:10px">${money(hoyPagado)}</div>
-        ${bar(hoyPagado, rp.diaria, 'Pago de hoy frente al mínimo diario')}
-        <p class="muted small">${rp.diaria > 0 ? (cumpleHoy ? `Superaste el mínimo por ${money(hoyPagado - rp.diaria)}.` : `Te faltan ${money(rp.diaria - hoyPagado)} para llegar al mínimo de ${money(rp.diaria)}.`) : 'Cuando Miguel registre gastos verás tu mínimo.'}</p>
-        <a class="btn" href="#/perfil?t=pagos">Registrar pago de hoy</a></section>
-      <section class="card"><div class="tile"><span class="ic ${diferencia >= 0 ? 'ok' : 'coral'}">${ico('calendario')}</span>
-        <div><h2 style="margin:0">Vas ${diferencia >= 0 ? 'al día' : 'atrasado'}</h2><span class="muted small">Día ${dia} de ${DIAS_META}</span></div></div>
-        <div class="big" style="margin-top:10px">${money(totMes)}</div>
-        ${bar(totMes, rp.cuota, 'Avance de tu cuota del mes')}
-        <p class="muted small">Deberías llevar ${money(esperado)}. ${diferencia >= 0 ? `Vas ${money(diferencia)} por encima.` : `Te faltan ${money(-diferencia)} para ir al día.`}</p></section>
-    </div>
-    <section class="card" style="margin-top:16px"><h2>Pagar una deuda poco a poco</h2>
-      <p class="muted small">Elige cuánto quieres pagar cada día a una deuda. Se suma a tu ingreso necesario. Pon 0 para no incluirla.</p>
+  return `<section class="hero" aria-label="Tu situación del mes">
+      <div class="muted">${alDia ? 'Tu situación a la fecha' : 'Debes a la fecha'}</div>
+      <div class="big">${alDia ? 'Estás al día' : money(st.debeFecha)}</div>
+      <div class="muted small">Día ${st.dia} de ${DIAS_META} · deberías llevar ${money(st.esperado)} y llevas ${money(st.totMes)}</div>
+      <div style="margin-top:12px">${bar(st.totMes, rp.cuota, 'Avance de tu cuota del mes')}</div>
+      <div class="trio" role="group" aria-label="Resumen del mes">
+        <div><div class="k">Cuota del mes</div><div class="v">${money(rp.cuota)}</div></div>
+        <div><div class="k">Has pagado</div><div class="v">${money(st.totMes)}</div></div>
+        <div><div class="k">Falta del mes</div><div class="v">${money(st.faltaMes)}</div></div>
+      </div>
+      <a class="btn light" href="#/perfil?t=pagar">Registrar pago</a>
+    </section>
+
+    <div class="sect">Hoy</div>
+    <section class="card"><div class="tile"><span class="ic ${cumpleHoy ? 'ok' : 'amber'}">${ico(cumpleHoy ? 'check' : 'alerta')}</span>
+      <div><strong>${rp.diaria === 0 ? 'Sin gastos registrados' : cumpleHoy ? 'Cumpliste el mínimo de hoy' : 'Aún no cumples el mínimo de hoy'}</strong>
+      <div class="muted small">Mínimo diario ${money(rp.diaria)} · hoy llevas ${money(st.hoyPagado)}</div></div></div>
+      <div style="margin-top:10px">${bar(st.hoyPagado, rp.diaria, 'Pago de hoy frente al mínimo diario')}</div>
+      ${rp.diaria > 0 && !cumpleHoy ? `<p class="muted small" style="margin-top:8px">Te faltan ${money(rp.diaria - st.hoyPagado)} para llegar al mínimo.</p>` : ''}</section>
+
+    <div class="sect">Ingreso necesario</div>
+    <section class="card"><div class="muted small">Debes generar al día</div><div class="big">${money(rp.diaria + deudaDia)}</div>
+      <ul class="list" style="margin-top:6px">
+        <li class="row between nw"><span>Gastos compartidos <span class="muted small">(${money(rp.cuota)} ÷ ${DIAS_META} días)</span></span><span class="num">${money(rp.diaria)}</span></li>
+        <li class="row between nw"><span>Mis deudas</span><span class="num">${money(deudaDia)}</span></li></ul>
+      <details class="mini"${deudas.length ? ' open' : ''}><summary>Pagar una deuda poco a poco</summary>
+      <p class="muted small">Elige cuánto quieres pagar cada día a una deuda. Pon 0 para no incluirla.</p>
       ${deudas.length ? `<ul class="list">${deudas.map(d => { const e = est[d.id]; const dp = Number(d.daily_plan);
         return `<li><form data-form="plan" data-id="${esc(d.id)}" novalidate>
           <div class="row between"><strong>${esc(d.name)}</strong><span class="muted small">Falta ${money(e.resta)}</span></div>
-          <div class="row" style="margin-top:8px"><input aria-label="Pago diario para ${esc(d.name)}" name="monto" inputmode="numeric" value="${dp > 0 ? esc(String(Math.round(dp))) : ''}" placeholder="0" style="max-width:180px">
-          <button class="btn ghost sm" type="submit">Guardar</button>
-          ${dp > 0 && e.resta > 0 ? `<span class="muted small">La saldarías en ~${Math.ceil(e.resta / dp)} días</span>` : ''}</div>
+          <div class="row" style="margin-top:8px;flex-wrap:nowrap"><input aria-label="Pago diario para ${esc(d.name)}" name="monto" inputmode="numeric" data-fmt value="${dp > 0 ? esc(Math.round(dp).toLocaleString('es-CO')) : ''}" placeholder="0 por día">
+          <button class="btn ghost sm" type="submit">Guardar</button></div>
+          ${dp > 0 && e.resta > 0 ? `<p class="muted small">La saldarías en ~${Math.ceil(e.resta / dp)} días.</p>` : ''}
           <p class="err" data-err hidden></p></form></li>`; }).join('')}</ul>`
-        : `<div class="empty">Aún no registras deudas. Agrégalas en la pestaña Deudas.</div>`}</section>`;
+        : `<div class="empty">Aún no registras deudas. Agrégalas en Deudas.</div>`}</details></section>
+
+    <div class="sect">Mis pagos</div>
+    <section class="card"><div class="muted small">Método principal del mes</div><strong>${principal}</strong>
+      <span class="muted small"> · Efectivo ${money(ef)} · Transferencia ${money(tr)}</span>
+      ${pagos.length ? `<ul class="list" style="margin-top:8px">${pagos.slice(0, 30).map(p => `<li class="row between nw"><span><span class="num">${money(p.amount)}</span>
+        <span class="muted small"> · ${p.method === 'efectivo' ? 'Efectivo' : 'Transferencia'} · ${esc(fechaCorta(p.paid_on))}</span></span>
+        <button class="btn danger sm" data-action="del" data-t="payments" data-id="${esc(p.id)}" aria-label="Eliminar pago de ${esc(money(p.amount))}">Eliminar</button></li>`).join('')}</ul>
+        ${pagos.length > 30 ? `<p class="muted small">Se muestran los 30 más recientes.</p>` : ''}`
+        : `<div class="empty" style="margin-top:8px">Todavía no has registrado pagos.</div>`}</section>`;
+}
+
+/* --- Pagar: monto, metodo y fecha en una sola pantalla --- */
+async function vistaPagar() {
+  const [pagos, rp] = await Promise.all([q(sb.from('payments').select('*')), datosReparto()]);
+  const st = situacion(rp, pagos);
+  const banner = S.ultimo ? `<div class="banner" role="status">${ico('check')}<span>Pago de ${money(S.ultimo.monto)} registrado.
+    ${st.faltaMes > 0 ? `Te faltan ${money(st.faltaMes)} del mes.` : '¡Cuota del mes completa!'}</span></div>` : '';
+  S.ultimo = null;
+  const atajos = [];
+  const add = (v, t, sub) => { v = Math.round(v); if (v > 0 && !atajos.some(a => a.v === v)) atajos.push({ v, t, sub }); };
+  add(rp.diaria - st.hoyPagado, 'Mínimo de hoy', 'lo que falta');
+  add(st.debeFecha, 'Lo que debo', 'a la fecha');
+  [10000, 20000, 50000].forEach(v => add(v, money(v)));
+  return `${banner}
+    <div class="steps" role="group" aria-label="Tu situación">
+      <div><div class="k">Debes a la fecha</div><div class="v">${money(st.debeFecha)}</div></div>
+      <div><div class="k">Hoy llevas</div><div class="v">${money(st.hoyPagado)}</div></div>
+      <div><div class="k">Falta del mes</div><div class="v">${money(st.faltaMes)}</div></div>
+    </div>
+    <form data-form="pago" novalidate>
+      <label for="monto">¿Cuánto pagaste?</label>
+      <div class="amount"><span aria-hidden="true">$</span><input id="monto" name="monto" inputmode="numeric" autocomplete="off" placeholder="0" data-fmt required></div>
+      <div class="chips2" role="group" aria-label="Montos rápidos">${atajos.map(a => `<button type="button" data-action="monto" data-v="${a.v}">${a.sub ? `${esc(a.t)}<small>${esc(a.sub)} · ${money(a.v)}</small>` : esc(a.t)}</button>`).join('')}</div>
+      ${campoMetodo('pagar')}
+      <div class="field"><label>Fecha del pago</label>
+        <div class="datebox"><strong id="fechaTxt">Hoy · ${esc(fechaCorta(hoy()))}</strong><button class="btn ghost sm" type="button" data-action="fecha">Cambiar fecha</button></div>
+        <div id="fechaIn" hidden><input name="fecha" type="date" value="${hoy()}" max="2100-12-31" aria-label="Fecha del pago" required></div></div>
+      <p class="err" data-err hidden></p>
+      <div class="stickybar"><button class="btn block" type="submit">Confirmar pago</button></div>
+    </form>`;
 }
 
 async function tabAhorros() {
@@ -671,7 +752,7 @@ const FORMS = {
   async pago(f) {
     const monto = montoReq(f), fecha = fechaReq(f, 'fecha');
     await q(sb.from('payments').insert({ user_id: uid(), amount: monto, method: metodoDe(f, 'metodo'), paid_on: fecha }));
-    toast('Pago registrado'); await render();
+    S.ultimo = { monto }; await render(); window.scrollTo({ top: 0, behavior: 'smooth' });
   },
   async plan(f) {
     const txt = val(f, 'monto'); const v = txt === '' ? 0 : parseMonto(txt);
@@ -733,6 +814,8 @@ document.addEventListener('submit', async ev => {
 const ACCIONES = {
   async salir() { await sb.auth.signOut(); await cargarSesion(); location.hash = '#/'; await render(); },
   reintentar() { return render(); },
+  monto(el) { const i = document.getElementById('monto'); i.value = Number(el.dataset.v).toLocaleString('es-CO'); i.focus(); },
+  fecha(el) { const c = document.getElementById('fechaIn'); c.hidden = !c.hidden; el.textContent = c.hidden ? 'Cambiar fecha' : 'Listo'; if (!c.hidden) c.querySelector('input').focus(); },
   mes(el) { S.mes = sumarMes(S.mes, Number(el.dataset.n)); return render(); },
   async del(el) {
     if (el.dataset.confirm && !confirm(el.dataset.confirm)) return;
@@ -770,6 +853,16 @@ document.addEventListener('toggle', ev => {
   if (d.open) S.abiertas.add(d.dataset.debt); else S.abiertas.delete(d.dataset.debt);
 }, true);
 
+document.addEventListener('input', ev => {
+  const el = ev.target;
+  if (el.matches && el.matches('input[data-fmt]')) {
+    const d = el.value.replace(/\D/g, '');
+    el.value = d ? Number(d).toLocaleString('es-CO') : '';
+  } else if (el.matches && el.matches('#fechaIn input')) {
+    const t = document.getElementById('fechaTxt');
+    if (t && /^\d{4}-\d{2}-\d{2}$/.test(el.value)) t.textContent = el.value === hoy() ? `Hoy · ${fechaCorta(el.value)}` : fechaCorta(el.value);
+  }
+});
 window.addEventListener('hashchange', render);
 sb.auth.onAuthStateChange(() => {});
 (async () => {
