@@ -94,13 +94,13 @@ await prueba('admin ve solo el nombre de la solicitud y aprueba; la cuota se rep
   assert.doesNotMatch(t, /Cuota mensual por usuario/);          // el admin ya no fija cuotas
   await page.click('button[data-action=estado][data-s=approved]'); await page.waitForTimeout(250);
   const t2 = await txt(); assert.match(t2, /Solicitudes de perfil \(0\)/);
-  assert.match(t2, /cada uno paga\s*\$\s?33\.334/);              // ceil(100.000 / 3)
+  assert.match(t2, /Cada uno paga\s*\$\s?33\.334/);              // ceil(100.000 / 3)
 });
 await prueba('admin agrega gasto, marca pagado y lo escapa; el reparto se recalcula', async () => {
   await page.fill('form[data-form=gasto] input[name=nombre]', '<img src=x onerror=window.__xss=1>'); await page.fill('form[data-form=gasto] input[name=monto]', '20000');
   await page.click('form[data-form=gasto] button[type=submit]'); await page.waitForTimeout(250);
   assert.equal(await page.evaluate(() => window.__xss), undefined);
-  assert.match(await txt(), /cada uno paga\s*\$\s?40\.000/);     // 120.000 / 3
+  assert.match(await txt(), /Cada uno paga\s*\$\s?40\.000/);     // 120.000 / 3
   await page.check('input[data-change=gasto-pagado] >> nth=1'); await page.waitForTimeout(250);
   await ir('#/'); const t = await txt(); assert.match(t, /<img src=x/); assert.match(t, /Servicios ya pagados: \$\s?100\.000 de \$\s?120\.000/);
   assert.match(t, /Mínimo por día \(25 días\)\s*\$\s?1\.600/);   // 40.000 / 25
@@ -234,6 +234,51 @@ await prueba('ahorros y deudas de Ana NO son visibles para Miguel (admin)', asyn
 await prueba('modo oscuro: sin scroll horizontal', async () => {
   await page.evaluate(() => document.documentElement.setAttribute('data-theme', 'dark')); await ir('#/');
   assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
+});
+console.log('Admin: gastos y deuda general');
+await prueba('el formulario alterna entre gasto del mes y deuda general', async () => {
+  await page.evaluate(() => document.documentElement.setAttribute('data-theme', 'light')); await ir('#/admin');
+  assert.equal(await page.locator('#mesesBox').isVisible(), false); assert.match(await page.locator('#gBtn').innerText(), /Agregar gasto/);
+  await page.check('input[name=tipo][value=deuda]');
+  assert.equal(await page.locator('#mesesBox').isVisible(), true); assert.match(await page.locator('#gBtn').innerText(), /Agregar deuda general/);
+});
+await prueba('crear una deuda general la reparte en cuotas y sube la cuota de todos', async () => {
+  await page.fill('#gn', 'Reparación'); await page.fill('#gm', '300.000'); await page.selectOption('#gme', '3');
+  await page.click('#gBtn'); await page.waitForTimeout(300);
+  const t = await txt();
+  assert.match(t, /Total de gastos de[\s\S]*\$\s?220\.000/);          // 120.000 + 100.000 (primera cuota)
+  assert.match(t, /Cada uno paga\s*\$\s?73\.334/);                     // ceil(220.000 / 3)
+  assert.match(t, /Reparación \(1\/3\)/); assert.match(t, /0 de 3 cuotas pagadas/);
+  assert.equal(await page.locator('form[data-form=gasto-monto]:has(input[aria-label*="Reparación"]) button[data-action=del]').count(), 0); // las cuotas no se borran sueltas
+  assert.equal(await page.evaluate(() => window.__db.general_expenses.filter(g => g.debt_id).reduce((s, g) => s + g.amount, 0)), 300000);
+});
+await prueba('marcar una cuota como pagada avanza la deuda; se ve en el panel publico', async () => {
+  await page.check('label:has-text("Reparación (1/3)") input[data-change=gasto-pagado]'); await page.waitForTimeout(250);
+  assert.match(await txt(), /1 de 3 cuotas pagadas/); assert.match(await txt(), /Pagado \$\s?100\.000 · Falta \$\s?200\.000/);
+  await salir(); await ir('#/'); const t = await txt();
+  assert.match(t, /Deudas generales/); assert.match(t, /Reparación/); assert.match(t, /Deuda general/);
+  assert.match(t, /Cada usuario paga\s*\$\s?73\.334/);
+  await ir('#/'); await page.click('button[data-action=mes][data-n="1"]'); await page.waitForTimeout(250);
+  assert.match(await txt(), /Reparación \(2\/3\)/);                    // sigue el mes siguiente hasta saldarse
+  await page.click('button[data-action=mes][data-n="-1"]');
+});
+await prueba('copiar gastos del mes anterior no duplica las cuotas de la deuda', async () => {
+  await login('miguel'); await ir('#/admin'); await page.click('button[data-action=mes][data-n="1"]'); await page.waitForTimeout(200);
+  const antes = await page.evaluate(() => window.__db.general_expenses.length);
+  await page.click('button[data-action=copiar]'); await page.waitForTimeout(250);
+  const despues = await page.evaluate(() => window.__db.general_expenses.filter(g => g.name === 'Reparación (1/3)').length);
+  assert.equal(despues, 1); await page.click('button[data-action=mes][data-n="-1"]');
+});
+await prueba('eliminar la deuda general borra todas sus cuotas (con confirmacion)', async () => {
+  page.once('dialog', d => d.accept());
+  await page.click('button[data-action=borrar-dg]'); await page.waitForTimeout(300);
+  assert.equal(await page.evaluate(() => window.__db.general_debts.length + window.__db.general_expenses.filter(g => g.debt_id).length), 0);
+  assert.doesNotMatch(await txt(), /Reparación/); assert.match(await txt(), /Cada uno paga\s*\$\s?40\.000/);
+});
+await prueba('admin en celular: sin scroll horizontal y controles tactiles de 44 px', async () => {
+  assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
+  const chicos = await page.$$eval('#app .btn, #app select, #app input:not([type=checkbox]):not([type=radio])', els => els.filter(e => e.offsetParent && e.getBoundingClientRect().height < 44).map(e => e.outerHTML.slice(0, 60)));
+  assert.deepEqual(chicos, []);
 });
 await prueba('sin errores de consola ni violaciones de CSP', async () => { assert.deepEqual(errores, []); });
 

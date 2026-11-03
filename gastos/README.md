@@ -13,7 +13,7 @@ Panel de gastos compartidos y pagos mensuales. Sitio estático (HTML + JS, sin b
 - **Panel general:** cada persona aparece con su avance y una etiqueta "Al día" o "Debe $X a la fecha".
 - **Sesión:** queda guardada en el dispositivo; no se vuelve a pedir la contraseña. Tras registrarse se conserva la sesión, así que al ser aprobado se entra directo.
 - **Tema:** interruptor claro/oscuro en la cabecera (recuerda tu elección; por defecto sigue al sistema).
-- **Admin (usuario `miguel`):** aprueba/rechaza solicitudes (ve solo el nombre), gestiona los gastos del mes (agregar, editar, marcar pagado, eliminar, copiar del mes anterior).
+- **Admin (usuario `miguel`):** resumen del mes (total, cuota por usuario, mínimo diario) y un formulario único para **agregar un gasto del mes** o una **deuda general**. La deuda general (p. ej. una reparación) se reparte en 1 a 12 cuotas mensuales que se suman solas a la cuota de todos y siguen apareciendo cada mes hasta saldarse; el panel público muestra su avance. También: aprobar/rechazar solicitudes (ve solo el nombre), marcar cuotas como pagadas, editar montos, copiar los gastos del mes anterior (sin duplicar cuotas de deudas) y eliminar una deuda con todas sus cuotas.
 
 "A la fecha": deberías llevar pagado (mínimo diario × día del mes, hasta 25) y se compara con lo que llevas pagado.
 
@@ -47,7 +47,7 @@ El rol `is_admin` y el estado `status` no se pueden modificar desde el cliente; 
 
 ## Pruebas
 
-- `node gastos/tests/e2e.mjs`: 31 pruebas en Chromium con un Supabase **simulado** (`tests/mock-supabase.js`). Requiere `playwright` global.
+- `node gastos/tests/e2e.mjs`: 37 pruebas en Chromium con un Supabase **simulado** (`tests/mock-supabase.js`). Requiere `playwright` global.
 - `tests/rls-stub.sql` + `tests/rls-test.sql`: pruebas de permisos contra un Postgres local con un esquema `auth` simulado (ver orden: stub, `supabase/schema.sql`, test).
 
 **Pendiente de verificar contra el proyecto real** (el entorno de desarrollo no tenía acceso a Supabase): registro/inicio de sesión con Supabase Auth real, que el dominio del correo interno sea aceptado, y la ejecución del SQL en el editor de Supabase.

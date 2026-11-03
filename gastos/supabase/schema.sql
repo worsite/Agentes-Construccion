@@ -29,6 +29,19 @@ create table if not exists public.general_expenses (
 );
 create index if not exists general_expenses_month_idx on public.general_expenses (month);
 
+-- ---------- Deudas generales (algo nuevo que se reparte entre todos en N meses) ----------
+-- Cada deuda genera N gastos mensuales (una cuota por mes) que entran solos en el reparto.
+create table if not exists public.general_debts (
+  id          uuid primary key default gen_random_uuid(),
+  name        text not null check (char_length(name) between 1 and 80),
+  total       numeric(14,2) not null check (total > 0),
+  months      integer not null check (months between 1 and 24),
+  start_month date not null check (start_month = date_trunc('month', start_month)::date),
+  created_at  timestamptz not null default now()
+);
+alter table public.general_expenses add column if not exists debt_id uuid references public.general_debts(id) on delete cascade;
+create index if not exists general_expenses_debt_idx on public.general_expenses (debt_id);
+
 -- ---------- Pagos de cada usuario (aportes a la meta mensual) ----------
 create table if not exists public.payments (
   id         uuid primary key default gen_random_uuid(),
@@ -190,6 +203,34 @@ end $$;
 -- La cuota ya no se fija a mano: ver panel_usuarios.
 drop function if exists public.admin_set_quota(uuid, numeric);
 
+-- Crea una deuda general y sus cuotas mensuales (la ultima absorbe el redondeo).
+create or replace function public.admin_add_general_debt(p_name text, p_total numeric, p_months integer, p_start date) returns uuid
+language plpgsql security definer set search_path = public as $$
+declare v_id uuid; v_base numeric; v_start date := date_trunc('month', p_start)::date; i integer;
+begin
+  if not public.is_admin() then raise exception 'No autorizado'; end if;
+  if p_name is null or char_length(btrim(p_name)) not between 1 and 80 then raise exception 'Nombre invalido'; end if;
+  if p_total is null or p_total <= 0 then raise exception 'Monto invalido'; end if;
+  if p_months is null or p_months not between 1 and 24 then raise exception 'Meses invalidos (1 a 24)'; end if;
+  insert into public.general_debts (name, total, months, start_month) values (btrim(p_name), p_total, p_months, v_start) returning id into v_id;
+  v_base := floor(p_total / p_months);
+  for i in 1..p_months loop
+    insert into public.general_expenses (month, name, amount, debt_id)
+    values ((v_start + ((i - 1) || ' month')::interval)::date,
+            case when p_months = 1 then btrim(p_name) else btrim(p_name) || ' (' || i || '/' || p_months || ')' end,
+            case when i = p_months then p_total - v_base * (p_months - 1) else v_base end, v_id);
+  end loop;
+  return v_id;
+end $$;
+
+-- Borra la deuda y todas sus cuotas.
+create or replace function public.admin_delete_general_debt(p_id uuid) returns void
+language plpgsql security definer set search_path = public as $$
+begin
+  if not public.is_admin() then raise exception 'No autorizado'; end if;
+  delete from public.general_debts where id = p_id;
+end $$;
+
 -- Copia los gastos de un mes a otro (sin marcar como pagados).
 create or replace function public.admin_copy_expenses(p_from date, p_to date) returns integer
 language plpgsql security definer set search_path = public as $$
@@ -198,7 +239,7 @@ begin
   if not public.is_admin() then raise exception 'No autorizado'; end if;
   insert into public.general_expenses (month, name, amount)
     select date_trunc('month', p_to)::date, name, amount
-    from public.general_expenses where month = date_trunc('month', p_from)::date;
+    from public.general_expenses where month = date_trunc('month', p_from)::date and debt_id is null;
   get diagnostics n = row_count;
   return n;
 end $$;
@@ -206,6 +247,7 @@ end $$;
 -- ---------- Row Level Security ----------
 alter table public.profiles          enable row level security;
 alter table public.general_expenses  enable row level security;
+alter table public.general_debts     enable row level security;
 alter table public.payments          enable row level security;
 alter table public.savings_accounts  enable row level security;
 alter table public.savings_entries   enable row level security;
@@ -227,6 +269,10 @@ drop policy if exists ge_admin_upd on public.general_expenses;
 create policy ge_admin_upd on public.general_expenses for update to authenticated using (public.is_admin()) with check (public.is_admin());
 drop policy if exists ge_admin_del on public.general_expenses;
 create policy ge_admin_del on public.general_expenses for delete to authenticated using (public.is_admin());
+
+-- general_debts: lectura publica; se crean y borran solo con las funciones del admin.
+drop policy if exists gd_select on public.general_debts;
+create policy gd_select on public.general_debts for select to anon, authenticated using (true);
 
 -- payments: solo el dueno (aprobado). El admin NO ve pagos ajenos individualmente.
 drop policy if exists pay_select on public.payments;
@@ -255,7 +301,7 @@ create policy debts_upd on public.debts for update to authenticated using (user_
 
 -- ---------- Permisos ----------
 revoke all on all tables in schema public from anon, authenticated;
-grant select on public.general_expenses to anon, authenticated;
+grant select on public.general_expenses, public.general_debts to anon, authenticated;
 grant insert, update, delete on public.general_expenses to authenticated;
 grant select on public.profiles to authenticated;
 grant select, insert, delete on public.payments, public.savings_accounts, public.savings_entries,
@@ -264,8 +310,10 @@ grant update (target_date, daily_plan) on public.debts to authenticated;
 
 revoke all on function public.panel_usuarios(date) from public;
 grant execute on function public.panel_usuarios(date) to anon, authenticated;
-revoke all on function public.admin_set_status(uuid,text), public.admin_copy_expenses(date,date) from public;
-grant execute on function public.admin_set_status(uuid,text), public.admin_copy_expenses(date,date) to authenticated;
+revoke all on function public.admin_set_status(uuid,text), public.admin_copy_expenses(date,date),
+       public.admin_add_general_debt(text,numeric,integer,date), public.admin_delete_general_debt(uuid) from public;
+grant execute on function public.admin_set_status(uuid,text), public.admin_copy_expenses(date,date),
+       public.admin_add_general_debt(text,numeric,integer,date), public.admin_delete_general_debt(uuid) to authenticated;
 grant execute on function public.is_admin(), public.is_approved() to authenticated;
 
 -- =====================================================================

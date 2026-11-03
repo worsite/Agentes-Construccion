@@ -112,7 +112,7 @@ input:hover,select:hover{border-color:var(--ink-soft)}
 .month strong{min-width:9ch;text-align:center}.month strong::first-letter{text-transform:uppercase}
 .empty{padding:20px;text-align:center;color:var(--ink-soft);border:1.5px dashed var(--line);border-radius:12px}
 .err{color:var(--danger);font-weight:700;margin:8px 0}
-#toast{position:fixed;left:50%;bottom:20px;transform:translateX(-50%);z-index:20;max-width:92vw}
+#toast{position:fixed;left:50%;bottom:calc(92px + env(safe-area-inset-bottom));transform:translateX(-50%);z-index:20;max-width:92vw}
 #toast div{background:var(--ink);color:var(--bg);padding:11px 18px;border-radius:12px;margin-top:8px;font-weight:700;box-shadow:var(--shadow)}
 #toast div.bad{background:#C8382E;color:#fff}
 .narrow{max-width:440px;margin:0 auto}
@@ -138,7 +138,7 @@ body{padding-bottom:calc(86px + env(safe-area-inset-bottom))}
 .bottom a.cta span.t{color:var(--ink-soft)}
 .bottom a.cta[aria-current="page"] span.t{color:var(--primary-dark)}
 .lbl{display:none}.dsk{display:none}
-@media(min-width:720px){.bottom{display:none}body{padding-bottom:0}.lbl{display:inline}.dsk{display:inline-flex}}
+@media(min-width:720px){#toast{bottom:20px}.bottom{display:none}body{padding-bottom:0}.lbl{display:inline}.dsk{display:inline-flex}}
 .iconbtn{width:44px;padding:0!important;justify-content:center}
 .trio{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:14px}
 .trio>div{background:rgba(255,255,255,.18);border-radius:12px;padding:10px 8px;text-align:center}
@@ -299,6 +299,19 @@ async function cargarSesion() {
 const aprobado = () => S.profile && S.profile.status === 'approved';
 const esAdmin = () => aprobado() && S.profile.is_admin;
 
+/** Para cada deuda general: sus cuotas, lo ya pagado y el avance. */
+function resumenDeudas(deudas, todos) {
+  return deudas.map(d => {
+    const partes = todos.filter(g => g.debt_id === d.id).sort((a, b) => a.month.localeCompare(b.month));
+    const pagado = partes.filter(g => g.paid).reduce((a, g) => a + Number(g.amount), 0);
+    return { d, partes, pagado, pagadas: partes.filter(g => g.paid).length, resta: Math.max(0, Number(d.total) - pagado) };
+  });
+}
+const tarjetaDeuda = (x, extra = '') => `<li><div class="row between nw"><span><strong>${esc(x.d.name)}</strong>
+    <span class="muted small"> · ${x.pagadas} de ${x.partes.length} cuotas pagadas</span></span><span class="num">${money(x.d.total)}</span></div>
+    <div style="margin:8px 0 4px">${bar(x.pagado, Number(x.d.total), 'Avance de ' + x.d.name)}</div>
+    <div class="muted small">Pagado ${money(x.pagado)} · Falta ${money(x.resta)}</div>${extra}</li>`;
+
 /** Cuanto deberia llevar pagado cada usuario a hoy en el mes `mes` (mes pasado: toda la cuota; futuro: nada). */
 function aFecha(mes, r) {
   const act = mesDe(hoy());
@@ -364,10 +377,13 @@ const selectorMes = () => `<div class="month"><button class="btn ghost sm" data-
 /* ===== Panel general (publico) ===== */
 async function vistaPanel() {
   const m = S.mes;
-  const [usuarios, gastos] = await Promise.all([
+  const [usuarios, todos, deudas] = await Promise.all([
     q(sb.rpc('panel_usuarios', { p_month: m })),
-    q(sb.from('general_expenses').select('*').eq('month', m).order('created_at')),
+    q(sb.from('general_expenses').select('*').order('created_at')),
+    q(sb.from('general_debts').select('*').order('created_at')).catch(() => []),
   ]);
+  const gastos = todos.filter(g => g.month === m);
+  const dgs = resumenDeudas(deudas, todos).filter(x => x.resta > 0 || x.partes.some(g => g.month === m));
   const r = reparto(usuarios, gastos);
   const falta = Math.max(0, r.total - r.aportado);
   const gPagado = gastos.filter(g => g.paid).reduce((a, g) => a + Number(g.amount), 0);
@@ -390,11 +406,13 @@ async function vistaPanel() {
     </section>
     <div class="grid two">
       <section class="card"><h2>Gastos generales</h2>
-        ${gastos.length ? `<ul class="list">${gastos.map(g => `<li class="row between"><span>${esc(g.name)}</span>
+        ${gastos.length ? `<ul class="list">${gastos.map(g => `<li class="row between"><span>${esc(g.name)}${g.debt_id ? ' <span class="pill pend">Deuda general</span>' : ''}</span>
           <span class="row" style="gap:8px"><span class="num">${money(g.amount)}</span>
           <span class="pill ${g.paid ? 'ok' : 'pend'}">${g.paid ? 'Pagado' : 'Pendiente'}</span></span></li>`).join('')}</ul>
           <p class="muted small">Servicios ya pagados: ${money(gPagado)} de ${money(r.total)}</p>`
           : `<div class="empty">No hay gastos registrados para este mes.</div>`}</section>
+      ${dgs.length ? `<section class="card"><h2>Deudas generales</h2><p class="muted small">Se reparten entre todos y ya están sumadas a la cuota de cada mes.</p>
+        <ul class="list">${dgs.map(x => tarjetaDeuda(x)).join('')}</ul></section>` : ''}
       <section class="card"><h2>Avance por persona</h2>
         ${usuarios.length ? `<ul class="list">${usuarios.map(u => { const deb = Math.max(0, aFecha(m, r) - Number(u.paid)); return `<li>
           <div class="row between"><span class="row" style="gap:10px">${avatar(u.display_name)}<strong>${esc(u.display_name)}</strong></span><span class="num">${pctTxt(Number(u.paid), Number(u.quota))}</span></div>
@@ -687,35 +705,60 @@ async function tabDeudas() {
 /* ===== Admin ===== */
 async function vistaAdmin() {
   const m = S.mes;
-  const [perfiles, gastos, usuarios] = await Promise.all([
+  const [perfiles, todos, usuarios, deudas] = await Promise.all([
     q(sb.from('profiles').select('*').order('created_at')),
-    q(sb.from('general_expenses').select('*').eq('month', m).order('created_at')),
+    q(sb.from('general_expenses').select('*').order('created_at')),
     q(sb.rpc('panel_usuarios', { p_month: m })),
+    q(sb.from('general_debts').select('*').order('created_at')).catch(() => []),
   ]);
+  const gastos = todos.filter(g => g.month === m);
   const r = reparto(usuarios, gastos);
   const pend = perfiles.filter(p => p.status === 'pending');
-  $app.innerHTML = `<h1>Administración</h1>
-  <section class="card"><h2>Solicitudes de perfil (${pend.length})</h2>
+  const dgs = resumenDeudas(deudas, todos);
+
+  const solicitudes = `<section class="card"><h2>Solicitudes de perfil (${pend.length})</h2>
     ${pend.length ? `<ul class="list">${pend.map(p => `<li class="row between"><span class="row" style="gap:10px">${avatar(p.display_name)}<strong>${esc(p.display_name)}</strong></span>
       <span class="row"><button class="btn sm" data-action="estado" data-id="${esc(p.id)}" data-s="approved">Aprobar</button>
       <button class="btn danger sm" data-action="estado" data-id="${esc(p.id)}" data-s="rejected">Rechazar</button></span></li>`).join('')}</ul>`
-      : `<div class="empty">No hay solicitudes pendientes.</div>`}</section>
-  <section class="card"><div class="row between"><h2>Gastos generales</h2>${selectorMes()}</div>
-    <p class="muted small">Total ${money(r.total)} entre ${r.n} usuarios: cada uno paga ${money(r.cuota)} (${money(r.diaria)} por día en ${DIAS_META} días).</p>
-    <form data-form="gasto" novalidate><div class="fields cols">
-      <div class="field"><label for="gn">Gasto</label><input id="gn" name="nombre" maxlength="80" placeholder="Gas, agua, luz..." required></div>
-      ${campoMonto('gm')}<div class="field"><button class="btn" type="submit">Agregar gasto</button></div></div>
-      <p class="err" data-err hidden></p></form>
-    ${gastos.length ? `<ul class="list">${gastos.map(g => `<li><div class="row between">
-      <label class="row" style="margin:0"><input type="checkbox" style="width:24px;min-height:24px" data-change="gasto-pagado" data-id="${esc(g.id)}"${g.paid ? ' checked' : ''}> <span>${esc(g.name)}</span></label>
+      : `<div class="empty">No hay solicitudes pendientes.</div>`}</section>`;
+
+  $app.innerHTML = `<div class="row between" style="margin-bottom:12px"><h1 style="margin:0">Administración</h1>${selectorMes()}</div>
+  ${pend.length ? solicitudes : ''}
+  <section class="hero" aria-label="Resumen del mes">
+    <div class="muted">Total de gastos de ${esc(nombreMes(m))}</div><div class="big">${money(r.total)}</div>
+    <div class="trio"><div><div class="k">Usuarios</div><div class="v">${r.n}</div></div>
+      <div><div class="k">Cada uno paga</div><div class="v">${money(r.cuota)}</div></div>
+      <div><div class="k">Mínimo por día</div><div class="v">${money(r.diaria)}</div></div></div></section>
+
+  <section class="card"><h2>Agregar</h2>
+    <form data-form="gasto" novalidate>
+      <div class="field"><div class="seg" role="radiogroup" aria-label="Qué vas a agregar">
+        <label><input type="radio" name="tipo" value="gasto" data-change="tipo" checked><span>Gasto del mes</span></label>
+        <label><input type="radio" name="tipo" value="deuda" data-change="tipo"><span>Deuda general</span></label></div></div>
+      <div class="field"><label for="gn">Nombre</label><input id="gn" name="nombre" maxlength="80" placeholder="Gas, agua, reparación..." required></div>
+      <div class="field"><label for="gm" id="gmL">Monto (COP)</label><input id="gm" name="monto" inputmode="numeric" autocomplete="off" placeholder="50.000" data-fmt required></div>
+      <div class="field" id="mesesBox" hidden><label for="gme">¿En cuántos meses se paga?</label>
+        <select id="gme" name="meses">${[1, 2, 3, 4, 5, 6, 9, 12].map(n => `<option value="${n}">${n === 1 ? '1 mes (todo de una vez)' : n + ' meses'}</option>`).join('')}</select>
+        <p class="muted small">Se reparte en cuotas mensuales desde ${esc(nombreMes(m))} y se suma a la cuota de todos los usuarios.</p></div>
+      <p class="err" data-err hidden></p>
+      <button class="btn block" type="submit" id="gBtn">Agregar gasto</button>
+    </form></section>
+
+  <section class="card"><h2>Gastos de ${esc(nombreMes(m))}</h2>
+    ${gastos.length ? `<ul class="list">${gastos.map(g => `<li><div class="row between nw">
+      <label class="row" style="margin:0;flex-wrap:nowrap"><input type="checkbox" style="width:24px;min-height:24px" data-change="gasto-pagado" data-id="${esc(g.id)}"${g.paid ? ' checked' : ''}> <span>${esc(g.name)}${g.debt_id ? ' <span class="pill pend">Deuda general</span>' : ''}</span></label>
       <span class="pill ${g.paid ? 'ok' : 'pend'}">${g.paid ? 'Pagado' : 'Pendiente'}</span></div>
-      <form data-form="gasto-monto" data-id="${esc(g.id)}" class="row" style="margin-top:8px" novalidate>
-        <input aria-label="Monto de ${esc(g.name)}" name="monto" inputmode="numeric" value="${esc(String(Math.round(Number(g.amount))))}" style="max-width:180px">
-        <button class="btn ghost sm" type="submit">Guardar monto</button>
-        <button class="btn danger sm" type="button" data-action="del" data-t="general_expenses" data-id="${esc(g.id)}" data-confirm="¿Eliminar este gasto?">Eliminar</button></form></li>`).join('')}</ul>`
+      <form data-form="gasto-monto" data-id="${esc(g.id)}" class="row" style="margin-top:8px;flex-wrap:nowrap" novalidate>
+        <input aria-label="Monto de ${esc(g.name)}" name="monto" inputmode="numeric" data-fmt value="${esc(Math.round(Number(g.amount)).toLocaleString('es-CO'))}">
+        <button class="btn ghost sm" type="submit">Guardar</button>
+        ${g.debt_id ? '' : `<button class="btn danger sm" type="button" data-action="del" data-t="general_expenses" data-id="${esc(g.id)}" data-confirm="¿Eliminar este gasto?">Eliminar</button>`}</form></li>`).join('')}</ul>`
       : `<div class="empty">No hay gastos este mes.</div>`}
-    <button class="btn ghost" data-action="copiar" style="margin-top:12px">Copiar gastos del mes anterior</button>
-    <p class="muted small">La cuota se calcula sola: gastos del mes entre usuarios aprobados. Si entra un usuario nuevo, la cuota de todos baja.</p></section>`;
+    <button class="btn ghost" data-action="copiar" style="margin-top:12px">Copiar gastos del mes anterior</button></section>
+
+  ${dgs.length ? `<section class="card"><h2>Deudas generales</h2>
+    <ul class="list">${dgs.map(x => tarjetaDeuda(x, `<div style="margin-top:8px"><button class="btn danger sm" data-action="borrar-dg" data-id="${esc(x.d.id)}" data-confirm="Se borrará la deuda y todas sus cuotas. ¿Continuar?">Eliminar deuda</button></div>`)).join('')}</ul></section>` : ''}
+  ${pend.length ? '' : solicitudes}
+  <p class="muted small">La cuota se calcula sola: gastos del mes entre usuarios aprobados. Si entra un usuario nuevo, la cuota de todos baja.</p>`;
 }
 
 /* ===== Formularios ===== */
@@ -791,8 +834,15 @@ const FORMS = {
   },
   async gasto(f) {
     const nombre = val(f, 'nombre'); if (!nombre) throw new Error('Escribe el nombre del gasto.');
-    await q(sb.from('general_expenses').insert({ month: S.mes, name: nombre, amount: montoReq(f) }));
-    toast('Gasto agregado'); await render();
+    const tipo = (f.querySelector('input[name=tipo]:checked') || {}).value;
+    if (tipo === 'deuda') {
+      await q(sb.rpc('admin_add_general_debt', { p_name: nombre, p_total: montoReq(f), p_months: Number(f.elements.meses.value) || 1, p_start: S.mes }));
+      toast('Deuda general agregada');
+    } else {
+      await q(sb.from('general_expenses').insert({ month: S.mes, name: nombre, amount: montoReq(f) }));
+      toast('Gasto agregado');
+    }
+    await render();
   },
   async 'gasto-monto'(f) {
     await q(sb.from('general_expenses').update({ amount: montoReq(f) }).eq('id', f.dataset.id));
@@ -821,6 +871,10 @@ const ACCIONES = {
     if (el.dataset.confirm && !confirm(el.dataset.confirm)) return;
     await q(sb.from(el.dataset.t).delete().eq('id', el.dataset.id)); await render();
   },
+  async 'borrar-dg'(el) {
+    if (!confirm(el.dataset.confirm)) return;
+    await q(sb.rpc('admin_delete_general_debt', { p_id: el.dataset.id })); toast('Deuda eliminada'); await render();
+  },
   async estado(el) { await q(sb.rpc('admin_set_status', { p_user: el.dataset.id, p_status: el.dataset.s })); toast(el.dataset.s === 'approved' ? 'Usuario aprobado' : 'Solicitud rechazada'); await render(); },
   async copiar() {
     const n = await q(sb.rpc('admin_copy_expenses', { p_from: sumarMes(S.mes, -1), p_to: S.mes }));
@@ -840,7 +894,13 @@ document.addEventListener('click', async ev => {
 document.addEventListener('change', async ev => {
   const el = ev.target.closest('[data-change]'); if (!el) return;
   try {
-    if (el.dataset.change === 'debtSel') { S.debtSel = el.value; S.debtFecha = ''; await render(); }
+    if (el.dataset.change === 'tipo') {
+      const deuda = el.value === 'deuda';
+      document.getElementById('mesesBox').hidden = !deuda;
+      document.getElementById('gBtn').textContent = deuda ? 'Agregar deuda general' : 'Agregar gasto';
+      document.getElementById('gmL').textContent = deuda ? 'Monto total (COP)' : 'Monto (COP)';
+    }
+    else if (el.dataset.change === 'debtSel') { S.debtSel = el.value; S.debtFecha = ''; await render(); }
     else if (el.dataset.change === 'debtFecha') { S.debtFecha = el.value; await render(); }
     else if (el.dataset.change === 'gasto-pagado') {
       await q(sb.from('general_expenses').update({ paid: el.checked }).eq('id', el.dataset.id)); await render();

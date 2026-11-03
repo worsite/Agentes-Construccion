@@ -13,7 +13,7 @@
       { id: 'g1', month: mes, name: 'Gas', amount: 60000, paid: true, created_at: '2026-01-01T00:00:01Z' },
       { id: 'g2', month: mes, name: 'Agua', amount: 40000, paid: false, created_at: '2026-01-01T00:00:02Z' },
     ],
-    payments: [], savings_accounts: [], savings_entries: [], debts: [], debt_balances: [], debt_payments: [],
+    general_debts: [], payments: [], savings_accounts: [], savings_entries: [], debts: [], debt_balances: [], debt_payments: [],
   };
   let db = db0;
   try { const g = localStorage.getItem('mock-db'); if (g) db = JSON.parse(g); } catch (e) {}
@@ -87,8 +87,23 @@
       }
       if (!isAdmin()) return { data: null, error: { message: 'No autorizado' } };
       if (name === 'admin_set_status') { db.profiles.find(p => p.id === a.p_user).status = a.p_status; return { data: null, error: null }; }
+      if (name === 'admin_add_general_debt') {
+        if (!(a.p_total > 0) || !(a.p_months >= 1 && a.p_months <= 24)) return { data: null, error: { message: 'Monto invalido' } };
+        const d = { id: uuid(), name: a.p_name, total: a.p_total, months: a.p_months, start_month: a.p_start, created_at: new Date().toISOString() };
+        db.general_debts.push(d); const base = Math.floor(a.p_total / a.p_months);
+        for (let i = 1; i <= a.p_months; i++) {
+          const [y, mm] = a.p_start.split('-').map(Number); const dt = new Date(y, mm - 1 + i - 1, 1);
+          db.general_expenses.push({ id: uuid(), month: `${dt.getFullYear()}-${pad(dt.getMonth() + 1)}-01`, name: a.p_months === 1 ? a.p_name : `${a.p_name} (${i}/${a.p_months})`,
+            amount: i === a.p_months ? a.p_total - base * (a.p_months - 1) : base, paid: false, debt_id: d.id, created_at: new Date().toISOString() });
+        }
+        return { data: d.id, error: null };
+      }
+      if (name === 'admin_delete_general_debt') {
+        db.general_debts = db.general_debts.filter(d => d.id !== a.p_id); db.general_expenses = db.general_expenses.filter(g => g.debt_id !== a.p_id);
+        return { data: null, error: null };
+      }
       if (name === 'admin_copy_expenses') {
-        const src = db.general_expenses.filter(g => g.month === a.p_from);
+        const src = db.general_expenses.filter(g => g.month === a.p_from && !g.debt_id);
         src.forEach(g => db.general_expenses.push({ id: uuid(), month: a.p_to, name: g.name, amount: g.amount, paid: false, created_at: new Date().toISOString() }));
         return { data: src.length, error: null };
       }
