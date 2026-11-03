@@ -11,6 +11,8 @@ Panel de gastos compartidos y pagos mensuales. Sitio estático (HTML + JS, sin b
   - **Cuenta:** *Debes a la fecha* (o "Estás al día"), cuota del mes, lo que has pagado y lo que falta; cumplimiento de hoy; **ingreso necesario** por día (gastos compartidos + el pago diario que elijas para cada deuda) e historial de pagos.
   - **Ahorros** y **Deudas** (privados; ni el admin los ve). Las deudas se ven plegadas: toca el nombre para el detalle.
 - **Panel general:** cada persona aparece con su avance y una etiqueta "Al día" o "Debe $X a la fecha".
+- **WhatsApp:** se pide al registrarse (con o sin +57; se guarda con el indicativo). Quien ya tenía cuenta sin número ve una pantalla obligatoria al entrar y no puede seguir hasta registrarlo. Se puede cambiar en Cuenta. Solo lo ven Miguel y el supervisor.
+- **Supervisor:** Miguel lo asigna en Admin entre los usuarios aprobados. Ve todos los pagos, quién debe a la fecha y los WhatsApp, pero **no paga ni cuenta en el reparto** (la cuota de los demás se calcula sin él) y sus ahorros/deudas personales no se usan. En su pantalla *Supervisión*, cada persona atrasada tiene un botón que abre WhatsApp con un mensaje ya escrito (pregunta por el pago no reportado, cuánto debería llevar, cuánto aparece y el atraso). **No se envía solo:** la persona que supervisa revisa el mensaje y toca enviar. Los ahorros y deudas de cada usuario siguen siendo privados, incluso para el supervisor.
 - **Sesión:** queda guardada en el dispositivo; no se vuelve a pedir la contraseña. Tras registrarse se conserva la sesión, así que al ser aprobado se entra directo.
 - **Tema:** interruptor claro/oscuro en la cabecera (recuerda tu elección; por defecto sigue al sistema).
 - **Admin (usuario `miguel`):** resumen del mes (total, cuota por usuario, mínimo diario) y un formulario único para **agregar un gasto del mes** o una **deuda general**. La deuda general (p. ej. una reparación) se reparte en 1 a 12 cuotas mensuales que se suman solas a la cuota de todos y siguen apareciendo cada mes hasta saldarse; el panel público muestra su avance. También: aprobar/rechazar solicitudes (ve solo el nombre), marcar cuotas como pagadas, editar montos, copiar los gastos del mes anterior (sin duplicar cuotas de deudas) y eliminar una deuda con todas sus cuotas.
@@ -47,7 +49,7 @@ El rol `is_admin` y el estado `status` no se pueden modificar desde el cliente; 
 
 ## Pruebas
 
-- `node gastos/tests/e2e.mjs`: 37 pruebas en Chromium con un Supabase **simulado** (`tests/mock-supabase.js`). Requiere `playwright` global.
+- `node gastos/tests/e2e.mjs`: 47 pruebas en Chromium con un Supabase **simulado** (`tests/mock-supabase.js`). Requiere `playwright` global.
 - `tests/rls-stub.sql` + `tests/rls-test.sql`: pruebas de permisos contra un Postgres local con un esquema `auth` simulado (ver orden: stub, `supabase/schema.sql`, test).
 
 **Pendiente de verificar contra el proyecto real** (el entorno de desarrollo no tenía acceso a Supabase): registro/inicio de sesión con Supabase Auth real, que el dominio del correo interno sea aceptado, y la ejecución del SQL en el editor de Supabase.
@@ -62,3 +64,5 @@ El rol `is_admin` y el estado `status` no se pueden modificar desde el cliente; 
 ## Actualizar desde la versión anterior
 
 Vuelve a ejecutar `supabase/schema.sql` completo: agrega la columna `daily_plan`, reemplaza `panel_usuarios` (cuota calculada) y elimina `admin_set_quota`.
+
+La actualización con supervisor y WhatsApp también se aplica volviendo a ejecutar `supabase/schema.sql` (agrega las columnas `whatsapp` e `is_supervisor`, las funciones `set_my_whatsapp` y `admin_set_supervisor`, y ajusta el reparto y los permisos).

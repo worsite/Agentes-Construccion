@@ -6,8 +6,8 @@
   const db0 = {
     users: [{ id: 'u-miguel', username: 'miguel', password: 'clave1234' }, { id: 'u-ana', username: 'ana', password: 'clave1234' }],
     profiles: [
-      { id: 'u-miguel', username: 'miguel', display_name: 'Miguel', status: 'approved', is_admin: true, monthly_quota: 100000, created_at: '2026-01-01T00:00:00Z' },
-      { id: 'u-ana', username: 'ana', display_name: 'Ana', status: 'approved', is_admin: false, monthly_quota: 100000, created_at: '2026-01-02T00:00:00Z' },
+      { id: 'u-miguel', username: 'miguel', display_name: 'Miguel', status: 'approved', is_admin: true, is_supervisor: false, whatsapp: '573001111111', monthly_quota: 100000, created_at: '2026-01-01T00:00:00Z' },
+      { id: 'u-ana', username: 'ana', display_name: 'Ana', status: 'approved', is_admin: false, is_supervisor: false, whatsapp: '573002222222', monthly_quota: 100000, created_at: '2026-01-02T00:00:00Z' },
     ],
     general_expenses: [
       { id: 'g1', month: mes, name: 'Gas', amount: 60000, paid: true, created_at: '2026-01-01T00:00:01Z' },
@@ -25,10 +25,13 @@
   const listeners = [];
   const priv = ['payments', 'savings_accounts', 'savings_entries', 'debts', 'debt_balances', 'debt_payments'];
   const me = () => session && session.user.id;
+  const normWa = t => { const d = String(t || '').replace(/\D/g, ''); if (/^3\d{9}$/.test(d)) return '57' + d; if (/^[1-9]\d{7,14}$/.test(d)) return d; return null; };
+  const esSup = () => { const p = db.profiles.find(x => x.id === me()); return !!(p && p.is_supervisor && p.status === 'approved'); };
   const meProfile = () => db.profiles.find(p => p.id === me());
   const visible = t => {
+    if (t === 'payments') return db[t].filter(r => r.user_id === me() || esSup());
     if (priv.includes(t)) return db[t].filter(r => r.user_id === me());
-    if (t === 'profiles') return !me() ? [] : (meProfile() && meProfile().is_admin ? db.profiles : db.profiles.filter(p => p.id === me()));
+    if (t === 'profiles') return !me() ? [] : (meProfile() && (meProfile().is_admin || esSup()) ? db.profiles : db.profiles.filter(p => p.id === me()));
     return db[t];
   };
   function builder(t) {
@@ -55,6 +58,7 @@
       if (st.op === 'insert') {
         const out = [];
         for (const r of st.rows) {
+          if (t === 'payments' && esSup()) return err('new row violates row-level security policy for table "payments"');
           if (priv.includes(t) && (r.user_id !== me() || !meProfile() || meProfile().status !== 'approved')) return err('new row violates row-level security policy for table "' + t + '"');
           if (t === 'general_expenses' && !(meProfile() && meProfile().is_admin)) return err('new row violates row-level security policy');
           const row = { id: uuid(), created_at: new Date().toISOString(), ...r }; db[t].push(row); out.push({ ...row });
@@ -81,11 +85,21 @@
       if (name === 'panel_usuarios') {
         const m = a.p_month.slice(0, 7);
         const tot = db.general_expenses.filter(g => g.month.slice(0, 7) === m).reduce((x, g) => x + g.amount, 0);
-        const ap = db.profiles.filter(p => p.status === 'approved');
+        const ap = db.profiles.filter(p => p.status === 'approved' && !p.is_supervisor);
         return { data: ap.map(p => ({ username: p.username, display_name: p.display_name, quota: Math.ceil(tot / ap.length),
           paid: db.payments.filter(x => x.user_id === p.id && x.paid_on.slice(0, 7) === m).reduce((s, x) => s + x.amount, 0) })), error: null };
       }
+      if (name === 'set_my_whatsapp') {
+        const v = normWa(a.p_number); if (!me()) return { data: null, error: { message: 'No autorizado' } };
+        if (!v) return { data: null, error: { message: 'WhatsApp invalido' } };
+        db.profiles.find(p => p.id === me()).whatsapp = v; return { data: v, error: null };
+      }
       if (!isAdmin()) return { data: null, error: { message: 'No autorizado' } };
+      if (name === 'admin_set_supervisor') {
+        const p = db.profiles.find(x => x.id === a.p_user);
+        if (a.p_on && !(p && p.status === 'approved' && !p.is_admin)) return { data: null, error: { message: 'Solo un usuario aprobado que no sea admin puede ser supervisor' } };
+        p.is_supervisor = !!a.p_on; return { data: null, error: null };
+      }
       if (name === 'admin_set_status') { db.profiles.find(p => p.id === a.p_user).status = a.p_status; return { data: null, error: null }; }
       if (name === 'admin_add_general_debt') {
         if (!(a.p_total > 0) || !(a.p_months >= 1 && a.p_months <= 24)) return { data: null, error: { message: 'Monto invalido' } };
@@ -117,9 +131,10 @@
       },
       async signUp({ email, password, options }) {
         const un = options.data.username;
+        if (!normWa(options.data.whatsapp)) return { data: null, error: { message: 'Database error saving new user' } };
         if (db.users.some(x => x.username === un)) return { data: null, error: { message: 'User already registered' } };
         const id = uuid(); db.users.push({ id, username: un, password });
-        db.profiles.push({ id, username: un, display_name: options.data.display_name, status: 'pending', is_admin: false, monthly_quota: 0, created_at: new Date().toISOString() });
+        db.profiles.push({ id, username: un, display_name: options.data.display_name, status: 'pending', is_admin: false, is_supervisor: false, whatsapp: normWa(options.data.whatsapp), monthly_quota: 0, created_at: new Date().toISOString() });
         setSes({ user: { id } }); return { data: { session }, error: null };
       },
       async signOut() { setSes(null); return { error: null }; },

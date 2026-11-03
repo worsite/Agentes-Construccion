@@ -144,6 +144,7 @@ body{padding-bottom:calc(86px + env(safe-area-inset-bottom))}
 .trio>div{background:rgba(255,255,255,.18);border-radius:12px;padding:10px 8px;text-align:center}
 .trio .k{font-size:.72rem;color:rgba(255,255,255,.9);line-height:1.2}
 .trio .v{font-weight:800;font-size:1rem;font-variant-numeric:tabular-nums;margin-top:2px}
+.btn.wa{background:#128C4A;color:#fff;width:100%}
 .btn.light{background:#fff;color:#0A4F6E;width:100%;margin-top:14px}
 .btn.block{width:100%;min-height:54px;font-size:1.05rem}
 .amount{display:flex;align-items:center;gap:8px;border:2px solid var(--line);border-radius:16px;padding:6px 16px;background:var(--surface)}
@@ -210,6 +211,14 @@ function parseMonto(s) {
   return Number(t.replace(/[.,\s]/g, ''));
 }
 const pct = (parte, total) => total > 0 ? (parte / total) * 100 : null;
+/** Igual que norm_whatsapp() del SQL: solo digitos; un celular colombiano de 10 digitos recibe el 57. null si no es valido. */
+function normWhatsapp(t) {
+  const d = String(t || '').replace(/\D/g, '');
+  if (/^3\d{9}$/.test(d)) return '57' + d;
+  if (/^[1-9]\d{7,14}$/.test(d)) return d;
+  return null;
+}
+const fmtWhatsapp = n => { n = String(n || ''); const m = /^57(3\d{9})$/.exec(n); return m ? `+57 ${m[1].slice(0, 3)} ${m[1].slice(3, 6)} ${m[1].slice(6)}` : '+' + n; };
 const emailDe = u => `${u}@${DOMINIO_CORREO}`;
 
 const ICONOS = {
@@ -221,6 +230,8 @@ const ICONOS = {
   check: '<path d="M20 6 9 17l-5-5"/>',
   alerta: '<path d="M12 9v4M12 17h.01"/><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/>',
   chevron: '<path d="m6 9 6 6 6-6"/>',
+  mensaje: '<path d="M21 11.5a8.4 8.4 0 0 1-12.4 7.4L3 21l2.1-5.4A8.4 8.4 0 1 1 21 11.5z"/>',
+  ojo: '<path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/>',
   grafica: '<path d="M3 3v18h18"/><path d="m7 15 4-4 3 3 5-6"/>',
   inicio: '<path d="m3 11 9-8 9 8"/><path d="M5 10v10h14V10"/>',
   mas: '<path d="M12 5v14M5 12h14"/>',
@@ -255,6 +266,7 @@ function toast(msg, malo) {
 const traducir = e => {
   const m = (e && e.message) || String(e);
   if (/Email not confirmed/i.test(m)) return 'Tu correo interno no está confirmado. Ejecuta de nuevo schema.sql en Supabase (ver README).';
+  if (/WhatsApp invalido/i.test(m)) return 'El número de WhatsApp no es válido.';
   if (/Invalid login credentials/i.test(m)) return 'Usuario o contraseña incorrectos.';
   if (/already registered|already been registered|duplicate key|profiles_username_uq/i.test(m)) return 'Ese nombre de usuario ya existe.';
   if (/Database error saving new user/i.test(m)) return 'No se pudo crear el perfil. Revisa que el usuario tenga 3-20 letras minúsculas, números o _.';
@@ -298,6 +310,7 @@ async function cargarSesion() {
 }
 const aprobado = () => S.profile && S.profile.status === 'approved';
 const esAdmin = () => aprobado() && S.profile.is_admin;
+const esSupervisor = () => aprobado() && S.profile.is_supervisor && !S.profile.is_admin;
 
 /** Para cada deuda general: sus cuotas, lo ya pagado y el avance. */
 function resumenDeudas(deudas, todos) {
@@ -337,15 +350,21 @@ function pintarNav(path) {
   const { tab } = ruta();
   const t = tab || 'cuenta';
   const a = (href, txt, activo, cls = '') => `<a href="${href}"${activo ? ' aria-current="page"' : ''} class="${cls}">${txt}</a>`;
+  const item = (href, txt, icono, activo, cls = '') => `<a href="${href}"${activo ? ' aria-current="page"' : ''} class="${cls}">${cls === 'cta' ? `<span class="pay">${ico(icono)}</span>` : ico(icono)}<span class="t">${txt}</span></a>`;
   let h = a('#/', 'Panel', path === '/', 'dsk');
   let b = '';
-  if (S.user) {
+  if (S.user && S.profile && !S.profile.whatsapp) {   // falta el WhatsApp: solo se puede registrarlo o salir
+    h = `<button type="button" data-action="salir" class="iconbtn" aria-label="Salir">${ico('salir')}<span class="lbl">Salir</span></button>`;
+  } else if (S.user && esSupervisor()) {
+    h += a('#/supervision', 'Supervisión', path === '/supervision', 'dsk');
+    h += `<button type="button" data-action="salir" class="iconbtn" aria-label="Salir">${ico('salir')}<span class="lbl">Salir</span></button>`;
+    b = item('#/', 'Panel', 'inicio', path === '/') + item('#/supervision', 'Supervisión', 'ojo', path === '/supervision');
+  } else if (S.user) {
     const en = path === '/perfil';
     h += a('#/perfil', 'Mi cuenta', en && t === 'cuenta', 'dsk') + a('#/perfil?t=pagar', 'Pagar', en && t === 'pagar', 'dsk')
        + a('#/perfil?t=ahorros', 'Ahorros', en && t === 'ahorros', 'dsk') + a('#/perfil?t=deudas', 'Deudas', en && t === 'deudas', 'dsk');
     if (esAdmin()) h += `<a href="#/admin"${path === '/admin' ? ' aria-current="page"' : ''} class="iconbtn" aria-label="Administración">${ico('escudo')}<span class="lbl">Admin</span></a>`;
     h += `<button type="button" data-action="salir" class="iconbtn" aria-label="Salir">${ico('salir')}<span class="lbl">Salir</span></button>`;
-    const item = (href, txt, icono, activo, cls = '') => `<a href="${href}"${activo ? ' aria-current="page"' : ''} class="${cls}">${cls === 'cta' ? `<span class="pay">${ico(icono)}</span>` : ico(icono)}<span class="t">${txt}</span></a>`;
     b = item('#/', 'Panel', 'inicio', path === '/') + item('#/perfil', 'Cuenta', 'billetera', en && t === 'cuenta')
       + item('#/perfil?t=pagar', 'Pagar', 'mas', en && t === 'pagar', 'cta')
       + item('#/perfil?t=ahorros', 'Ahorros', 'meta', en && t === 'ahorros') + item('#/perfil?t=deudas', 'Deudas', 'tarjeta', en && t === 'deudas');
@@ -363,8 +382,12 @@ async function render() {
   try {
     if (path === '/ingresar') return vistaLogin();
     if (path === '/registro') return vistaRegistro();
-    if (path === '/perfil') return S.user ? await vistaPerfil() : (location.hash = '#/ingresar');
+    // Quien aun no registro su WhatsApp debe hacerlo antes de seguir.
+    if (S.user && S.profile && !S.profile.whatsapp) return vistaWhatsapp(true);
+    if (path === '/whatsapp') return S.user ? vistaWhatsapp(false) : (location.hash = '#/ingresar');
+    if (path === '/perfil') return !S.user ? (location.hash = '#/ingresar') : esSupervisor() ? (location.hash = '#/supervision') : await vistaPerfil();
     if (path === '/admin') return esAdmin() ? await vistaAdmin() : (location.hash = '#/');
+    if (path === '/supervision') return esSupervisor() ? await vistaSupervision() : (location.hash = '#/');
     return await vistaPanel();
   } catch (e) {
     $app.innerHTML = `<div class="card"><p class="err">${esc(traducir(e))}</p><button class="btn" data-action="reintentar">Reintentar</button></div>`;
@@ -443,6 +466,8 @@ function vistaRegistro() {
       <div class="field"><label for="n">Nombre</label><input id="n" name="nombre" autocomplete="name" maxlength="60" required></div>
       <div class="field"><label for="u">Usuario</label><input id="u" name="usuario" autocomplete="username" autocapitalize="none" maxlength="20" aria-describedby="uh" required>
         <p class="muted small" id="uh">3 a 20 caracteres: letras minúsculas, números o _</p></div>
+      <div class="field"><label for="w">WhatsApp</label><input id="w" name="whatsapp" type="tel" inputmode="tel" autocomplete="tel" aria-describedby="wh" placeholder="300 123 4567" required>
+        <p class="muted small" id="wh">Con o sin +57. Se usa para recordatorios de pago.</p></div>
       <div class="field"><label for="p">Contraseña</label><input id="p" name="clave" type="password" autocomplete="new-password" minlength="8" aria-describedby="ph" required>
         <p class="muted small" id="ph">Mínimo 8 caracteres</p></div>
       <div class="field"><label for="p2">Repite la contraseña</label><input id="p2" name="clave2" type="password" autocomplete="new-password" required></div>
@@ -450,6 +475,17 @@ function vistaRegistro() {
       <button class="btn" type="submit">Enviar solicitud</button>
     </form>
     <p class="muted" style="margin-top:16px">¿Ya tienes perfil? <a href="#/ingresar">Ingresar</a></p></div>`;
+}
+
+function vistaWhatsapp(obligatorio) {
+  $app.innerHTML = `<div class="card narrow"><h1>${obligatorio ? 'Agrega tu WhatsApp' : 'Mi WhatsApp'}</h1>
+    <p class="muted">${obligatorio ? 'Para seguir usando la app necesitamos tu número. Solo lo ven Miguel y el supervisor, y se usa para recordatorios de pago.' : 'Cambia el número donde te pueden escribir.'}</p>
+    <form data-form="whatsapp" novalidate>
+      <div class="field"><label for="w">Número de WhatsApp</label><input id="w" name="whatsapp" type="tel" inputmode="tel" autocomplete="tel" placeholder="300 123 4567" value="${esc(S.profile && S.profile.whatsapp ? fmtWhatsapp(S.profile.whatsapp) : '')}" required>
+        <p class="muted small">Con o sin +57.</p></div>
+      <p class="err" data-err hidden></p>
+      <button class="btn block" type="submit">Guardar número</button>
+    </form>${obligatorio ? '' : '<p style="margin-top:14px"><a href="#/perfil">Volver</a></p>'}</div>`;
 }
 
 /* ===== Perfil privado ===== */
@@ -551,6 +587,9 @@ async function vistaCuenta() {
           ${dp > 0 && e.resta > 0 ? `<p class="muted small">La saldarías en ~${Math.ceil(e.resta / dp)} días.</p>` : ''}
           <p class="err" data-err hidden></p></form></li>`; }).join('')}</ul>`
         : `<div class="empty">Aún no registras deudas. Agrégalas en Deudas.</div>`}</details></section>
+
+    <div class="sect">Mi WhatsApp</div>
+    <section class="card row between"><span class="num">${esc(fmtWhatsapp(S.profile.whatsapp))}</span><a class="btn ghost sm" href="#/whatsapp">Cambiar</a></section>
 
     <div class="sect">Mis pagos</div>
     <section class="card"><div class="muted small">Método principal del mes</div><strong>${principal}</strong>
@@ -702,6 +741,60 @@ async function tabDeudas() {
   }).join('') : `<div class="empty">Aún no registras deudas.</div>`}`;
 }
 
+/* ===== Supervision (solo lectura + recordatorios por WhatsApp) ===== */
+function mensajeAtraso(f, r, m, esperado) {
+  const nombre = f.u.display_name.trim().split(/\s+/)[0];
+  const lleva = f.paid > 0 ? `en la app aparecen ${money(f.paid)}` : 'en la app no aparece ningún pago';
+  return `Hola ${nombre}, ¿cómo estás? Te escribo de Cuentas Claras.\n\nRevisando los reportes de ${nombreMes(m)} no veo registrados tus pagos al día de hoy: deberías llevar ${money(esperado)} y ${lleva}, así que tienes un atraso de ${money(f.debe)}.\n\n¿Ya hiciste el pago y falta reportarlo, o hay algo en lo que te pueda ayudar? Tu cuota del mes es ${money(r.cuota)} (mínimo ${money(r.diaria)} por día).\n\n¡Gracias!`;
+}
+async function vistaSupervision() {
+  const m = S.mes;
+  const [usuarios, gastos, perfiles, pagos] = await Promise.all([
+    q(sb.rpc('panel_usuarios', { p_month: m })),
+    q(sb.from('general_expenses').select('*').eq('month', m)),
+    q(sb.from('profiles').select('*')),
+    q(sb.from('payments').select('*').order('paid_on', { ascending: false }).order('created_at', { ascending: false })),
+  ]);
+  const r = reparto(usuarios, gastos);
+  const esperado = aFecha(m, r);
+  const porUsuario = Object.fromEntries(perfiles.map(p => [p.username, p]));
+  const filas = usuarios.map(u => {
+    const p = porUsuario[u.username] || {};
+    const paid = Number(u.paid);
+    return { u, p, paid, debe: Math.max(0, esperado - paid), ult: pagos.find(x => x.user_id === p.id) };
+  }).sort((a, b) => b.debe - a.debe || a.u.display_name.localeCompare(b.u.display_name));
+  const atrasados = filas.filter(f => f.debe > 0);
+  const nombres = Object.fromEntries(perfiles.map(p => [p.id, p.display_name]));
+  const recientes = pagos.filter(x => nombres[x.user_id]).slice(0, 15);
+
+  $app.innerHTML = `<div class="row between" style="margin-bottom:12px"><h1 style="margin:0">Supervisión</h1>${selectorMes()}</div>
+  <section class="hero" aria-label="Resumen del mes">
+    <div class="muted">Falta por pagar en ${esc(nombreMes(m))}</div><div class="big">${money(Math.max(0, r.total - r.aportado))}</div>
+    <div style="margin-top:10px">${bar(r.aportado, r.total, 'Aportes del mes')}</div>
+    <div class="trio"><div><div class="k">Usuarios</div><div class="v">${r.n}</div></div>
+      <div><div class="k">Atrasados</div><div class="v">${atrasados.length}</div></div>
+      <div><div class="k">Al día</div><div class="v">${filas.length - atrasados.length}</div></div></div></section>
+
+  <div class="sect">Quién debe a la fecha</div>
+  <section class="card">${filas.length ? `<ul class="list">${filas.map(f => {
+    const link = f.debe > 0 && f.p.whatsapp ? `https://wa.me/${f.p.whatsapp}?text=${encodeURIComponent(mensajeAtraso(f, r, m, esperado))}` : '';
+    return `<li>
+      <div class="row between nw"><span class="row" style="gap:10px;flex-wrap:nowrap">${avatar(f.u.display_name)}<strong>${esc(f.u.display_name)}</strong></span>
+        <span class="pill ${f.debe === 0 ? 'ok' : 'no'}">${f.debe === 0 ? 'Al día' : 'Debe ' + money(f.debe)}</span></div>
+      <div style="margin-top:8px">${bar(f.paid, Number(f.u.quota), 'Avance de ' + f.u.display_name)}</div>
+      <p class="muted small">Pagó ${money(f.paid)} de ${money(f.u.quota)} · ${f.ult ? 'último pago ' + esc(fechaCorta(f.ult.paid_on)) : 'sin pagos registrados'}</p>
+      ${f.debe > 0 ? (link ? `<a class="btn wa sm" href="${esc(link)}" target="_blank" rel="noopener noreferrer">${ico('mensaje')} Escribir por WhatsApp</a>
+        <details class="mini"><summary>Ver el mensaje</summary><p class="small" style="white-space:pre-wrap">${esc(mensajeAtraso(f, r, m, esperado))}</p></details>`
+        : `<p class="muted small">Sin número de WhatsApp registrado.</p>`) : ''}</li>`; }).join('')}</ul>`
+    : `<div class="empty">No hay usuarios en el reparto.</div>`}</section>
+
+  <div class="sect">Pagos recientes de todos</div>
+  <section class="card">${recientes.length ? `<ul class="list">${recientes.map(x => `<li class="row between nw"><span><strong>${esc(nombres[x.user_id])}</strong>
+    <span class="muted small"> · ${x.method === 'efectivo' ? 'Efectivo' : 'Transferencia'} · ${esc(fechaCorta(x.paid_on))}</span></span><span class="num">${money(x.amount)}</span></li>`).join('')}</ul>`
+    : `<div class="empty">Todavía no hay pagos registrados.</div>`}</section>
+  <p class="muted small">El botón abre WhatsApp con el mensaje escrito; tú lo revisas y tocas enviar. Los ahorros y las deudas personales de cada usuario siguen siendo privados.</p>`;
+}
+
 /* ===== Admin ===== */
 async function vistaAdmin() {
   const m = S.mes;
@@ -722,6 +815,13 @@ async function vistaAdmin() {
       <button class="btn danger sm" data-action="estado" data-id="${esc(p.id)}" data-s="rejected">Rechazar</button></span></li>`).join('')}</ul>`
       : `<div class="empty">No hay solicitudes pendientes.</div>`}</section>`;
 
+  const candidatos = perfiles.filter(p => p.status === 'approved' && !p.is_admin);
+  const supervisorCard = `<section class="card"><h2>Supervisor</h2>
+    <p class="muted small">El supervisor ve todo (pagos de todos, atrasos y WhatsApp) y puede escribirles por WhatsApp, pero <strong>no paga ni cuenta en el reparto</strong>: la cuota de los demás se calcula sin él.</p>
+    ${candidatos.length ? `<ul class="list">${candidatos.map(p => `<li class="row between nw"><span class="row" style="gap:10px;flex-wrap:nowrap">${avatar(p.display_name)}<span><strong>${esc(p.display_name)}</strong>${p.is_supervisor ? ' <span class="pill ok">Supervisor</span>' : ''}</span></span>
+      <button class="btn ${p.is_supervisor ? 'danger' : 'ghost'} sm" data-action="supervisor" data-id="${esc(p.id)}" data-on="${p.is_supervisor ? 0 : 1}"
+        ${p.is_supervisor ? '' : 'data-confirm="Esta persona dejará de contar en el reparto y la cuota de los demás subirá. ¿Asignarla como supervisor?"'}>${p.is_supervisor ? 'Quitar' : 'Asignar'}</button></li>`).join('')}</ul>`
+      : `<div class="empty">Aún no hay usuarios aprobados.</div>`}</section>`;
   $app.innerHTML = `<div class="row between" style="margin-bottom:12px"><h1 style="margin:0">Administración</h1>${selectorMes()}</div>
   ${pend.length ? solicitudes : ''}
   <section class="hero" aria-label="Resumen del mes">
@@ -757,6 +857,7 @@ async function vistaAdmin() {
 
   ${dgs.length ? `<section class="card"><h2>Deudas generales</h2>
     <ul class="list">${dgs.map(x => tarjetaDeuda(x, `<div style="margin-top:8px"><button class="btn danger sm" data-action="borrar-dg" data-id="${esc(x.d.id)}" data-confirm="Se borrará la deuda y todas sus cuotas. ¿Continuar?">Eliminar deuda</button></div>`)).join('')}</ul></section>` : ''}
+  ${supervisorCard}
   ${pend.length ? '' : solicitudes}
   <p class="muted small">La cuota se calcula sola: gastos del mes entre usuarios aprobados. Si entra un usuario nuevo, la cuota de todos baja.</p>`;
 }
@@ -784,9 +885,11 @@ const FORMS = {
     const nombre = val(f, 'nombre'), u = val(f, 'usuario').toLowerCase(), c = f.elements.clave.value;
     if (!nombre) throw new Error('Escribe tu nombre.');
     if (!/^[a-z0-9_]{3,20}$/.test(u)) throw new Error('Usuario: 3 a 20 caracteres, letras minúsculas, números o _.');
+    const wa = normWhatsapp(val(f, 'whatsapp'));
+    if (!wa) throw new Error('Escribe un número de WhatsApp válido (ej. 300 123 4567).');
     if (c.length < 8) throw new Error('La contraseña debe tener al menos 8 caracteres.');
     if (c !== f.elements.clave2.value) throw new Error('Las contraseñas no coinciden.');
-    await q(sb.auth.signUp({ email: emailDe(u), password: c, options: { data: { username: u, display_name: nombre } } }));
+    await q(sb.auth.signUp({ email: emailDe(u), password: c, options: { data: { username: u, display_name: nombre, whatsapp: wa } } }));
     // La sesion se conserva: cuando Miguel apruebe, el usuario entra sin escribir la contraseña.
     await cargarSesion();
     if (S.user) { location.hash = '#/perfil'; await render(); toast('Solicitud enviada'); }
@@ -796,6 +899,12 @@ const FORMS = {
     const monto = montoReq(f), fecha = fechaReq(f, 'fecha');
     await q(sb.from('payments').insert({ user_id: uid(), amount: monto, method: metodoDe(f, 'metodo'), paid_on: fecha }));
     S.ultimo = { monto }; await render(); window.scrollTo({ top: 0, behavior: 'smooth' });
+  },
+  async whatsapp(f) {
+    const wa = normWhatsapp(val(f, 'whatsapp'));
+    if (!wa) throw new Error('Escribe un número de WhatsApp válido (ej. 300 123 4567).');
+    await q(sb.rpc('set_my_whatsapp', { p_number: wa }));
+    await cargarSesion(); toast('WhatsApp guardado'); location.hash = esSupervisor() ? '#/supervision' : '#/perfil'; await render();
   },
   async plan(f) {
     const txt = val(f, 'monto'); const v = txt === '' ? 0 : parseMonto(txt);
@@ -870,6 +979,11 @@ const ACCIONES = {
   async del(el) {
     if (el.dataset.confirm && !confirm(el.dataset.confirm)) return;
     await q(sb.from(el.dataset.t).delete().eq('id', el.dataset.id)); await render();
+  },
+  async supervisor(el) {
+    if (el.dataset.confirm && !confirm(el.dataset.confirm)) return;
+    await q(sb.rpc('admin_set_supervisor', { p_user: el.dataset.id, p_on: el.dataset.on === '1' }));
+    toast(el.dataset.on === '1' ? 'Supervisor asignado' : 'Supervisor quitado'); await render();
   },
   async 'borrar-dg'(el) {
     if (!confirm(el.dataset.confirm)) return;

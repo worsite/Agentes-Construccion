@@ -22,7 +22,7 @@ await new Promise(ok => srv.listen(0, '127.0.0.1', ok));
 const URL_ = `http://127.0.0.1:${srv.address().port}/`;
 
 let fallos = 0, ok = 0;
-const prueba = async (nombre, fn) => { try { await fn(); ok++; console.log('  ok   ' + nombre); } catch (e) { fallos++; console.log('  FALLA ' + nombre + '\n       ' + (e.message || e).split('\n')[0]); } };
+const prueba = async (nombre, fn) => { try { await fn(); ok++; console.log('  ok   ' + nombre); } catch (e) { fallos++; console.log('  FALLA ' + nombre + '\n       ' + (e.message || e).split('\n')[0] + (e.actual !== undefined ? '  [actual=' + JSON.stringify(e.actual).slice(0, 200) + ' esperado=' + JSON.stringify(e.expected).slice(0, 80) + ']' : '')); } };
 
 const nav = await chromium.launch();
 const ctx = await nav.newContext({ viewport: { width: 390, height: 800 } });
@@ -67,9 +67,11 @@ await prueba('el interruptor cambia el tema y se recuerda tras recargar', async 
 console.log('Registro y aprobacion');
 await prueba('registro valida, envia solicitud y mantiene la sesion', async () => {
   await ir('#/registro');
-  await page.fill('input[name=nombre]', 'Luis <b>X</b>'); await page.fill('input[name=usuario]', 'Luis Z'); await page.fill('input[name=clave]', '12345678'); await page.fill('input[name=clave2]', '12345678');
+  await page.fill('input[name=nombre]', 'Luis <b>X</b>'); await page.fill('input[name=usuario]', 'Luis Z'); await page.fill('input[name=clave]', '12345678'); await page.fill('input[name=clave2]', '12345678'); await page.fill('input[name=whatsapp]', 'abc');
   await page.click('button[type=submit]'); assert.match(await txt(), /Usuario: 3 a 20/);
-  await page.fill('input[name=usuario]', 'luis'); await page.fill('input[name=clave2]', 'otra');
+  await page.fill('input[name=usuario]', 'luis');
+  await page.click('button[type=submit]'); assert.match(await txt(), /WhatsApp válido/);
+  await page.fill('input[name=whatsapp]', '300 555 1212'); await page.fill('input[name=clave2]', 'otra');
   await page.click('button[type=submit]'); assert.match(await txt(), /no coinciden/);
   await page.fill('input[name=clave2]', '12345678'); await page.click('button[type=submit]'); await page.waitForTimeout(300);
   assert.match(await txt(), /Pendiente de aprobación/);           // quedo dentro, sin pedir la clave otra vez
@@ -82,7 +84,7 @@ await prueba('la sesion sobrevive a recargar la pagina (no pide contraseña)', a
 });
 await prueba('usuario duplicado se informa', async () => {
   await ir('#/registro');
-  await page.fill('input[name=nombre]', 'Otra'); await page.fill('input[name=usuario]', 'ana'); await page.fill('input[name=clave]', '12345678'); await page.fill('input[name=clave2]', '12345678');
+  await page.fill('input[name=nombre]', 'Otra'); await page.fill('input[name=usuario]', 'ana'); await page.fill('input[name=whatsapp]', '3001230000'); await page.fill('input[name=clave]', '12345678'); await page.fill('input[name=clave2]', '12345678');
   await page.click('button[type=submit]'); await page.waitForTimeout(200); assert.match(await txt(), /ya existe/);
 });
 await prueba('clave incorrecta muestra error', async () => { await login('ana', 'mala'); assert.match(await txt(), /incorrectos/); });
@@ -279,6 +281,80 @@ await prueba('admin en celular: sin scroll horizontal y controles tactiles de 44
   assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
   const chicos = await page.$$eval('#app .btn, #app select, #app input:not([type=checkbox]):not([type=radio])', els => els.filter(e => e.offsetParent && e.getBoundingClientRect().height < 44).map(e => e.outerHTML.slice(0, 60)));
   assert.deepEqual(chicos, []);
+});
+console.log('WhatsApp obligatorio y supervisor');
+await prueba('el registro guardo el WhatsApp normalizado con el 57', async () => {
+  assert.equal(await page.evaluate(() => window.__db.profiles.find(p => p.username === 'luis').whatsapp), '573005551212');
+});
+await prueba('quien no tiene WhatsApp debe registrarlo antes de seguir', async () => {
+  await salir();
+  await page.evaluate(() => { const d = window.__db; d.profiles.find(p => p.username === 'ana').whatsapp = null; localStorage.setItem('mock-db', JSON.stringify(d)); });
+  await page.reload(); await page.waitForTimeout(250); await login('ana'); await ir('#/perfil?t=pagar');
+  let t = await txt(); assert.match(t, /Agrega tu WhatsApp/); assert.equal(await page.locator('form[data-form=pago]').count(), 0);
+  await ir('#/'); assert.match(await txt(), /Agrega tu WhatsApp/);                         // tambien bloquea el panel
+  await page.fill('input[name=whatsapp]', '12'); await page.click('button[type=submit]'); assert.match(await txt(), /WhatsApp válido/);
+  await page.fill('input[name=whatsapp]', '+57 310 555 1234'); await page.click('button[type=submit]'); await page.waitForTimeout(300);
+  assert.equal(await page.evaluate(() => window.__db.profiles.find(p => p.username === 'ana').whatsapp), '573105551234');
+  t = await txt(); assert.doesNotMatch(t, /Agrega tu WhatsApp/); assert.match(t, /mi whatsapp/i); assert.match(t, /\+57 310 555 1234/);
+  await salir();
+});
+await prueba('el admin ve a los aprobados (no a si mismo) y asigna al supervisor con confirmacion', async () => {
+  await login('miguel'); await ir('#/admin');
+  const t = await txt(); assert.match(t, /Supervisor/); assert.match(t, /no paga ni cuenta en el reparto/);
+  assert.equal(await page.locator('button[data-action=supervisor]').count(), 2);          // Ana y Luis
+  assert.match(await txt(), /Cada uno paga\s*\$\s?40\.000/);                               // 3 usuarios
+  page.once('dialog', d => d.accept());
+  await page.click('button[data-action=supervisor][data-on="1"] >> nth=1'); await page.waitForTimeout(300);
+  const t2 = await txt(); assert.match(t2, /Supervisor asignado|Quitar/);
+  assert.match(t2, /Cada uno paga\s*\$\s?60\.000/);                                         // el supervisor sale del reparto: 2 usuarios
+  assert.equal(await page.evaluate(() => window.__db.profiles.find(p => p.username === 'luis').is_supervisor), true);
+});
+await prueba('el supervisor no aparece en el reparto del panel publico', async () => {
+  await ir('#/'); const t = await txt(); assert.doesNotMatch(t, /Luis/); assert.match(t, /Usuarios\s*2/);
+});
+await salir();
+await prueba('supervisor: menu propio, no puede pagar y es redirigido', async () => {
+  await login('luis', '12345678'); await ir('#/'); 
+  assert.equal(await page.locator('#bnav a').count(), 2); assert.match(await page.locator('#bnav').innerText(), /Supervisión/);
+  assert.doesNotMatch(await page.locator('#bnav').innerText(), /Pagar/);
+  await ir('#/perfil?t=pagar'); assert.match(await txt(), /Supervisión/); assert.equal(await page.locator('form[data-form=pago]').count(), 0);
+  assert.equal(await page.evaluate(() => location.hash), '#/supervision');
+});
+await prueba('supervisor ve quien debe a la fecha y el boton de WhatsApp con el informe', async () => {
+  const dia = await page.evaluate(() => Math.min(new Date().getDate(), 25));
+  const esperado = Math.min(60000, 2400 * dia);                                              // cuota 60.000, minimo 2.400/dia
+  const t = await txt(); assert.match(t, /quién debe a la fecha/i); assert.match(t, /Atrasados\s*\d/);
+  assert.match(t, new RegExp('Miguel[\\s\\S]*Debe \\$\\s?' + esperado.toLocaleString('es-CO').replace('.', '\\.')));  // Miguel no ha pagado nada
+  const href = await page.getAttribute('a.wa >> nth=0', 'href');
+  assert.match(href, /^https:\/\/wa\.me\/573001111111\?text=/);
+  const msg = decodeURIComponent(href.split('?text=')[1]);
+  assert.match(msg, /Hola Miguel/); assert.match(msg, /Cuentas Claras/); assert.match(msg, /no aparece ningún pago/);
+  assert.match(msg, /atraso de \$\s?[\d.]+/); assert.match(msg, /¿Ya hiciste el pago/); assert.match(msg, /Tu cuota del mes es \$\s?60\.000/);
+  assert.equal(await page.getAttribute('a.wa >> nth=0', 'target'), '_blank'); assert.match(await page.getAttribute('a.wa >> nth=0', 'rel'), /noopener/);
+  const anaAtrasada = esperado > 40000;
+  const filaAna = await page.locator('li:has(strong:text-is("Ana")) >> nth=0').innerText();
+  assert.equal(/Debe/.test(filaAna), anaAtrasada); assert.match(filaAna, /Pagó \$\s?40\.000 de \$\s?60\.000/);
+});
+await prueba('supervisor ve los pagos de todos, pero no ahorros ni deudas', async () => {
+  const t = await txt(); assert.match(t, /pagos recientes de todos/i); assert.match(t, /Ana[\s\S]*\$\s?30\.000/);
+  assert.match(t, /ahorros y las deudas personales de cada usuario siguen siendo privados/);
+  assert.equal(await page.evaluate(() => window.__db.savings_accounts.length > 0), true);        // existen, pero la vista no los pide
+  assert.doesNotMatch(t, /Viaje|Tarjeta/);
+});
+await prueba('supervisor en celular: sin scroll horizontal y controles tactiles de 44 px', async () => {
+  assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
+  const chicos = await page.$$eval('#app .btn', els => els.filter(e => e.offsetParent && e.getBoundingClientRect().height < 44).map(e => e.textContent.trim()));
+  assert.deepEqual(chicos, []);
+});
+await prueba('el admin quita al supervisor y vuelve al reparto', async () => {
+  await salir(); await login('miguel'); await ir('#/admin');
+  await page.click('button[data-action=supervisor][data-on="0"]'); await page.waitForTimeout(300);
+  assert.match(await txt(), /Cada uno paga\s*\$\s?40\.000/);
+  assert.equal(await page.evaluate(() => window.__db.profiles.find(p => p.username === 'luis').is_supervisor), false);
+});
+await prueba('el admin no puede asignarse a si mismo (solo aprobados que no sean admin)', async () => {
+  const r = await page.evaluate(async () => (await window.supabase.createClient().rpc('admin_set_supervisor', { p_user: 'u-miguel', p_on: true })).error);
+  assert.match(r.message, /no sea admin/);
 });
 await prueba('sin errores de consola ni violaciones de CSP', async () => { assert.deepEqual(errores, []); });
 

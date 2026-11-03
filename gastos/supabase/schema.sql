@@ -16,6 +16,9 @@ create table if not exists public.profiles (
   constraint username_formato check (username ~ '^[a-z0-9_]{3,20}$')
 );
 create unique index if not exists profiles_username_uq on public.profiles (lower(username));
+-- WhatsApp (solo digitos, con indicativo de pais: 573001234567) y rol de supervisor (solo ve; no cuenta en el reparto).
+alter table public.profiles add column if not exists whatsapp text check (whatsapp is null or whatsapp ~ '^[0-9]{8,15}$');
+alter table public.profiles add column if not exists is_supervisor boolean not null default false;
 
 -- ---------- Gastos generales (gas, agua, etc.) ----------
 create table if not exists public.general_expenses (
@@ -114,6 +117,21 @@ language sql stable security definer set search_path = public as $$
   select coalesce((select is_admin and status = 'approved' from public.profiles where id = auth.uid()), false);
 $$;
 
+create or replace function public.is_supervisor() returns boolean
+language sql stable security definer set search_path = public as $$
+  select coalesce((select is_supervisor and status = 'approved' from public.profiles where id = auth.uid()), false);
+$$;
+
+-- Deja solo digitos; un celular colombiano de 10 digitos (3xx...) recibe el 57. Devuelve null si no es valido.
+create or replace function public.norm_whatsapp(p_text text) returns text
+language sql immutable as $$
+  select case
+    when d ~ '^3[0-9]{9}$' then '57' || d
+    when d ~ '^[1-9][0-9]{7,14}$' then d
+    else null end
+  from (select regexp_replace(coalesce(p_text, ''), '[^0-9]', '', 'g') as d) t;
+$$;
+
 create or replace function public.is_approved() returns boolean
 language sql stable security definer set search_path = public as $$
   select coalesce((select status = 'approved' from public.profiles where id = auth.uid()), false);
@@ -126,6 +144,7 @@ language plpgsql security definer set search_path = public as $$
 declare
   v_username text := lower(coalesce(new.raw_user_meta_data->>'username',''));
   v_display  text := btrim(coalesce(new.raw_user_meta_data->>'display_name',''));
+  v_wa       text := public.norm_whatsapp(new.raw_user_meta_data->>'whatsapp');
 begin
   if v_username !~ '^[a-z0-9_]{3,20}$' then
     raise exception 'Nombre de usuario invalido (3-20 caracteres: letras minusculas, numeros y _)';
@@ -133,7 +152,8 @@ begin
   if char_length(v_display) not between 1 and 60 then
     raise exception 'Nombre invalido';
   end if;
-  insert into public.profiles (id, username, display_name) values (new.id, v_username, v_display);
+  if v_wa is null then raise exception 'WhatsApp invalido'; end if;
+  insert into public.profiles (id, username, display_name, whatsapp) values (new.id, v_username, v_display, v_wa);
   return new;
 end $$;
 
@@ -178,7 +198,7 @@ language sql stable security definer set search_path = public as $$
     select coalesce(sum(amount), 0) as t from public.general_expenses
     where month = date_trunc('month', p_month)::date
   ), n as (
-    select count(*) as c from public.profiles where status = 'approved'
+    select count(*) as c from public.profiles where status = 'approved' and not is_supervisor
   )
   select p.username, p.display_name,
          case when n.c > 0 then ceil(tot.t / n.c) else 0 end,
@@ -187,7 +207,7 @@ language sql stable security definer set search_path = public as $$
                      and py.paid_on >= date_trunc('month', p_month)::date
                      and py.paid_on <  (date_trunc('month', p_month) + interval '1 month')::date), 0)
   from public.profiles p, tot, n
-  where p.status = 'approved'
+  where p.status = 'approved' and not p.is_supervisor
   order by p.display_name;
 $$;
 
@@ -202,6 +222,28 @@ end $$;
 
 -- La cuota ya no se fija a mano: ver panel_usuarios.
 drop function if exists public.admin_set_quota(uuid, numeric);
+
+-- El admin asigna o quita el rol de supervisor (no puede ser el admin ni alguien sin aprobar).
+create or replace function public.admin_set_supervisor(p_user uuid, p_on boolean) returns void
+language plpgsql security definer set search_path = public as $$
+begin
+  if not public.is_admin() then raise exception 'No autorizado'; end if;
+  if p_on and not exists (select 1 from public.profiles where id = p_user and status = 'approved' and not is_admin) then
+    raise exception 'Solo un usuario aprobado que no sea admin puede ser supervisor';
+  end if;
+  update public.profiles set is_supervisor = coalesce(p_on, false) where id = p_user;
+end $$;
+
+-- Cada persona registra o cambia su propio WhatsApp.
+create or replace function public.set_my_whatsapp(p_number text) returns text
+language plpgsql security definer set search_path = public as $$
+declare v text := public.norm_whatsapp(p_number);
+begin
+  if auth.uid() is null then raise exception 'No autorizado'; end if;
+  if v is null then raise exception 'WhatsApp invalido'; end if;
+  update public.profiles set whatsapp = v where id = auth.uid();
+  return v;
+end $$;
 
 -- Crea una deuda general y sus cuotas mensuales (la ultima absorbe el redondeo).
 create or replace function public.admin_add_general_debt(p_name text, p_total numeric, p_months integer, p_start date) returns uuid
@@ -258,7 +300,7 @@ alter table public.debt_payments     enable row level security;
 -- profiles: cada quien ve el suyo; el admin ve todos (para aprobar). Nadie edita directo.
 drop policy if exists profiles_select on public.profiles;
 create policy profiles_select on public.profiles for select to authenticated
-  using (id = auth.uid() or public.is_admin());
+  using (id = auth.uid() or public.is_admin() or public.is_supervisor());
 
 -- general_expenses: lectura publica, escritura solo admin.
 drop policy if exists ge_select on public.general_expenses;
@@ -274,11 +316,11 @@ create policy ge_admin_del on public.general_expenses for delete to authenticate
 drop policy if exists gd_select on public.general_debts;
 create policy gd_select on public.general_debts for select to anon, authenticated using (true);
 
--- payments: solo el dueno (aprobado). El admin NO ve pagos ajenos individualmente.
+-- payments: cada quien ve los suyos; el supervisor ve los de todos. El supervisor no registra pagos.
 drop policy if exists pay_select on public.payments;
-create policy pay_select on public.payments for select to authenticated using (user_id = auth.uid());
+create policy pay_select on public.payments for select to authenticated using (user_id = auth.uid() or public.is_supervisor());
 drop policy if exists pay_insert on public.payments;
-create policy pay_insert on public.payments for insert to authenticated with check (user_id = auth.uid() and public.is_approved());
+create policy pay_insert on public.payments for insert to authenticated with check (user_id = auth.uid() and public.is_approved() and not public.is_supervisor());
 drop policy if exists pay_delete on public.payments;
 create policy pay_delete on public.payments for delete to authenticated using (user_id = auth.uid());
 
@@ -308,13 +350,15 @@ grant select, insert, delete on public.payments, public.savings_accounts, public
       public.debts, public.debt_balances, public.debt_payments to authenticated;
 grant update (target_date, daily_plan) on public.debts to authenticated;
 
+revoke all on function public.norm_whatsapp(text), public.set_my_whatsapp(text), public.admin_set_supervisor(uuid,boolean) from public;
 revoke all on function public.panel_usuarios(date) from public;
 grant execute on function public.panel_usuarios(date) to anon, authenticated;
 revoke all on function public.admin_set_status(uuid,text), public.admin_copy_expenses(date,date),
        public.admin_add_general_debt(text,numeric,integer,date), public.admin_delete_general_debt(uuid) from public;
 grant execute on function public.admin_set_status(uuid,text), public.admin_copy_expenses(date,date),
        public.admin_add_general_debt(text,numeric,integer,date), public.admin_delete_general_debt(uuid) to authenticated;
-grant execute on function public.is_admin(), public.is_approved() to authenticated;
+grant execute on function public.is_admin(), public.is_approved(), public.is_supervisor(),
+       public.set_my_whatsapp(text), public.admin_set_supervisor(uuid,boolean) to authenticated;
 
 -- =====================================================================
 -- PASO MANUAL (despues de registrarte tu mismo como "miguel" en la app):
