@@ -1,0 +1,12 @@
+# Cuentas Claras: Netlify construye una carpeta "dist" con solo lo necesario para el sitio
+# (sin supabase/, tests/ ni tools/). El repo tambien tiene otro proyecto (ceiba/), que no se publica.
+[build]
+  command = "rm -rf dist && mkdir -p dist && cp gastos/index.html gastos/manifest.json dist/ && cp -r gastos/icons dist/icons"
+  publish = "dist"
+
+[[headers]]
+  for = "/*"
+  [headers.values]
+    X-Content-Type-Options = "nosniff"
+    Referrer-Policy = "strict-origin-when-cross-origin"
+    X-Frame-Options = "DENY"
