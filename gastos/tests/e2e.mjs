@@ -15,7 +15,8 @@ const srv = http.createServer((req, res) => {
   const rel = new URL(req.url, 'http://x').pathname.replace(/^\/+/, '') || 'index.html';
   const abs = path.join(RAIZ, rel);
   if (!abs.startsWith(RAIZ) || rel.startsWith('tests') || !fs.existsSync(abs)) { res.writeHead(404); return res.end(); }
-  res.writeHead(200, { 'content-type': abs.endsWith('.html') ? 'text/html; charset=utf-8' : 'text/javascript' });
+  const TIPOS = { '.html': 'text/html; charset=utf-8', '.json': 'application/json', '.png': 'image/png', '.svg': 'image/svg+xml' };
+  res.writeHead(200, { 'content-type': TIPOS[path.extname(abs)] || 'text/javascript' });
   fs.createReadStream(abs).pipe(res);
 });
 await new Promise(ok => srv.listen(0, '127.0.0.1', ok));
@@ -298,6 +299,48 @@ await prueba('admin en celular: sin scroll horizontal y controles tactiles de 44
   assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
   const chicos = await page.$$eval('#app .btn, #app select, #app input:not([type=checkbox]):not([type=radio])', els => els.filter(e => e.offsetParent && e.getBoundingClientRect().height < 44).map(e => e.outerHTML.slice(0, 60)));
   assert.deepEqual(chicos, []);
+});
+
+console.log('Acceso directo (logo en el celular)');
+await prueba('el HTML declara manifiesto, iconos, apple-touch-icon y color de tema', async () => {
+  const h = await page.evaluate(() => ({
+    manifest: document.querySelector('link[rel=manifest]')?.getAttribute('href'),
+    apple: document.querySelector('link[rel=apple-touch-icon]')?.getAttribute('href'),
+    icons: [...document.querySelectorAll('link[rel=icon]')].map(l => l.getAttribute('href')),
+    titulo: document.querySelector('meta[name=apple-mobile-web-app-title]')?.content,
+    tema: document.querySelectorAll('meta[name=theme-color]').length,
+  }));
+  assert.equal(h.manifest, 'manifest.json'); assert.equal(h.apple, 'icons/apple-touch-icon.png');
+  assert.deepEqual(h.icons.sort(), ['icons/favicon-32.png', 'icons/favicon.svg']); assert.equal(h.titulo, 'Cuentas Claras'); assert.equal(h.tema, 2);
+});
+await prueba('el manifiesto es valido y cada icono existe con el tamano declarado (la CSP no lo bloquea)', async () => {
+  const resp = await page.request.get(new URL('manifest.json', page.url()).href);
+  assert.equal(resp.status(), 200); assert.match(resp.headers()['content-type'], /json/);
+  const manifiesto = await resp.json();
+  const r = await page.evaluate(async m => {
+    const medidas = [];
+    for (const i of m.icons) {
+      const img = new Image(); img.src = i.src; await img.decode(); medidas.push([i.sizes, img.naturalWidth + 'x' + img.naturalHeight]);
+    }
+    const ap = new Image(); ap.src = 'icons/apple-touch-icon.png'; await ap.decode();
+    return { m, medidas, apple: ap.naturalWidth };
+  }, manifiesto);
+  assert.equal(r.m.display, 'standalone'); assert.equal(r.m.name, 'Cuentas Claras'); assert.equal(r.m.lang, 'es');
+  assert.ok(r.m.icons.some(i => i.sizes === '192x192') && r.m.icons.some(i => i.sizes === '512x512'));
+  assert.ok(r.m.icons.some(i => i.purpose === 'maskable'));
+  for (const [declarado, real] of r.medidas) assert.equal(declarado, real);
+  assert.equal(r.apple, 180);
+  assert.match(r.m.theme_color, /^#[0-9A-Fa-f]{6}$/); assert.match(r.m.background_color, /^#[0-9A-Fa-f]{6}$/);
+});
+await prueba('el icono tiene el degradado de marca a sangre (sin esquinas transparentes)', async () => {
+  const px = await page.evaluate(async () => {
+    const img = new Image(); img.src = 'icons/icon-512.png'; await img.decode();
+    const c = document.createElement('canvas'); c.width = c.height = 512; const x = c.getContext('2d'); x.drawImage(img, 0, 0);
+    const g = (a, b) => Array.from(x.getImageData(a, b, 1, 1).data);
+    return { sup: g(2, 2), inf: g(509, 509), centro: g(256, 256) };
+  });
+  assert.equal(px.sup[3], 255); assert.equal(px.inf[3], 255);                       // opaco en las esquinas
+  assert.ok(px.sup[1] > px.sup[0] && px.inf[2] > px.inf[0]);                         // verde azulado arriba-izq, azul abajo-der
 });
 
 console.log('WhatsApp obligatorio y supervisor');

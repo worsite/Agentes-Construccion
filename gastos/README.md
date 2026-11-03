@@ -31,7 +31,7 @@ Reglas: un pago cuenta para el mes de su fecha; el saldo de una deuda es el últ
    ```
    Hazlo **antes** de compartir el enlace: el primero que registre `miguel` será el único candidato a admin, y el admin solo se concede con este SQL, nunca desde el navegador.
 4. Como Miguel: en **Admin** registra los gastos del mes; la cuota de cada usuario se calcula sola.
-5. **Publicar en Netlify:** arrastra la carpeta `gastos/` (solo `index.html` es necesario; carga supabase-js desde jsdelivr).
+5. **Publicar en Netlify:** sube `index.html`, `manifest.json` y la carpeta `icons/` (o el zip `cuentas-claras-sitio.zip`); `index.html` carga supabase-js desde jsdelivr.
 
 `index.html` ya trae la URL del proyecto y la clave **anon** (pública por diseño). Nunca pongas la clave `service_role` en el frontend.
 
@@ -49,7 +49,7 @@ El rol `is_admin` y el estado `status` no se pueden modificar desde el cliente; 
 
 ## Pruebas
 
-- `node gastos/tests/e2e.mjs`: 50 pruebas en Chromium con un Supabase **simulado** (`tests/mock-supabase.js`). Requiere `playwright` global.
+- `node gastos/tests/e2e.mjs`: 53 pruebas en Chromium con un Supabase **simulado** (`tests/mock-supabase.js`). Requiere `playwright` global.
 - `tests/rls-stub.sql` + `tests/rls-test.sql`: pruebas de permisos contra un Postgres local con un esquema `auth` simulado (ver orden: stub, `supabase/schema.sql`, test).
 
 **Pendiente de verificar contra el proyecto real** (el entorno de desarrollo no tenía acceso a Supabase): registro/inicio de sesión con Supabase Auth real, que el dominio del correo interno sea aceptado, y la ejecución del SQL en el editor de Supabase.
@@ -68,3 +68,10 @@ Vuelve a ejecutar `supabase/schema.sql` completo: agrega la columna `daily_plan`
 La actualización con supervisor y WhatsApp también se aplica volviendo a ejecutar `supabase/schema.sql` (agrega las columnas `whatsapp` e `is_supervisor`, las funciones `set_my_whatsapp` y `admin_set_supervisor`, y ajusta el reparto y los permisos).
 
 Las deudas generales de la versión anterior (con cuotas mensuales) se migran solas al volver a ejecutar `schema.sql`: lo ya pagado pasa a "abonado" y las cuotas dejan de contar en los gastos del mes.
+
+## Acceso directo con logo
+
+La app incluye `manifest.json` e `icons/` (billetera sobre el degradado de marca; se regeneran con `node gastos/tools/generar-iconos.mjs`). **Hay que publicar esos archivos junto con `index.html`**, o el acceso directo no tendrá logo.
+- **Android (Chrome):** menú ⋮ → *Agregar a la pantalla principal* / *Instalar app*.
+- **iPhone (Safari):** botón Compartir → *Agregar a inicio*.
+Si ya habías creado un acceso directo antes, bórralo y vuelve a crearlo: el teléfono guarda el ícono viejo.

@@ -3,10 +3,20 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src https://cdn.jsdelivr.net 'unsafe-inline'; style-src 'unsafe-inline'; connect-src https://rpavathmxclihhswteiv.supabase.co; img-src data:; base-uri 'none'; form-action 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src https://cdn.jsdelivr.net 'unsafe-inline'; style-src 'unsafe-inline'; connect-src https://rpavathmxclihhswteiv.supabase.co; img-src 'self' data:; manifest-src 'self'; base-uri 'none'; form-action 'none'">
 <title>Cuentas Claras</title>
 <meta name="description" content="Panel de gastos compartidos, aportes diarios y metas.">
 <meta name="color-scheme" content="light dark">
+<meta name="theme-color" content="#0A7D70" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#0A111E" media="(prefers-color-scheme: dark)">
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="icons/favicon.svg" type="image/svg+xml">
+<link rel="icon" href="icons/favicon-32.png" sizes="32x32" type="image/png">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Cuentas Claras">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
 <script>
 /* Aplica el tema guardado antes de pintar para evitar parpadeo. */
 try { var t = localStorage.getItem('cc-tema'); if (t === 'dark' || t === 'light') document.documentElement.setAttribute('data-theme', t); } catch (e) {}
@@ -45,7 +55,7 @@ p{margin:.25rem 0 .75rem}
 a{color:var(--primary)}
 :focus-visible{outline:3px solid var(--focus);outline-offset:2px;border-radius:8px}
 .wrap{max-width:980px;margin:0 auto;padding:0 16px}
-header.top{background:color-mix(in srgb,var(--surface) 88%,transparent);backdrop-filter:blur(10px);border-bottom:1px solid var(--line);position:sticky;top:0;z-index:5}
+header.top{padding-top:env(safe-area-inset-top);background:color-mix(in srgb,var(--surface) 88%,transparent);backdrop-filter:blur(10px);border-bottom:1px solid var(--line);position:sticky;top:0;z-index:5}
 .top .wrap{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding-top:8px;padding-bottom:8px}
 .brand{display:flex;align-items:center;gap:10px;font-weight:800;font-size:1.1rem;color:var(--ink);text-decoration:none;margin-right:auto}
 .logo{width:34px;height:34px;border-radius:10px;background:linear-gradient(135deg,var(--hero1),var(--hero2));display:grid;place-items:center;color:#fff}
