@@ -32,18 +32,28 @@ create table if not exists public.general_expenses (
 );
 create index if not exists general_expenses_month_idx on public.general_expenses (month);
 
--- ---------- Deudas generales (algo nuevo que se reparte entre todos en N meses) ----------
--- Cada deuda genera N gastos mensuales (una cuota por mes) que entran solos en el reparto.
+-- ---------- Deudas generales (algo nuevo, aparte de la cuota mensual) ----------
+-- NO se suman al total del mes ni a la cuota: se muestran aparte como "Deuda" en negativo.
+-- Falta = total - paid. Al abonarse todo, queda en 0.
 create table if not exists public.general_debts (
   id          uuid primary key default gen_random_uuid(),
   name        text not null check (char_length(name) between 1 and 80),
   total       numeric(14,2) not null check (total > 0),
-  months      integer not null check (months between 1 and 24),
-  start_month date not null check (start_month = date_trunc('month', start_month)::date),
+  paid        numeric(14,2) not null default 0 check (paid >= 0),
+  months      integer,        -- en desuso (version anterior con cuotas mensuales)
+  start_month date,           -- en desuso
   created_at  timestamptz not null default now()
 );
+-- Bases creadas con la version anterior:
+alter table public.general_debts add column if not exists paid numeric(14,2) not null default 0 check (paid >= 0);
+alter table public.general_debts alter column months drop not null;
+alter table public.general_debts alter column start_month drop not null;
 alter table public.general_expenses add column if not exists debt_id uuid references public.general_debts(id) on delete cascade;
 create index if not exists general_expenses_debt_idx on public.general_expenses (debt_id);
+-- Migracion unica: las cuotas mensuales de la version anterior pasan a ser "abonado" y se retiran de los gastos del mes.
+update public.general_debts d set paid = least(d.total, coalesce((select sum(e.amount) from public.general_expenses e where e.debt_id = d.id and e.paid), 0))
+  where exists (select 1 from public.general_expenses e where e.debt_id = d.id);
+delete from public.general_expenses where debt_id is not null;
 
 -- ---------- Pagos de cada usuario (aportes a la meta mensual) ----------
 create table if not exists public.payments (
@@ -245,27 +255,32 @@ begin
   return v;
 end $$;
 
--- Crea una deuda general y sus cuotas mensuales (la ultima absorbe el redondeo).
-create or replace function public.admin_add_general_debt(p_name text, p_total numeric, p_months integer, p_start date) returns uuid
+-- Registra una deuda general (no toca la cuota mensual).
+drop function if exists public.admin_add_general_debt(text, numeric, integer, date);
+create or replace function public.admin_add_general_debt(p_name text, p_total numeric) returns uuid
 language plpgsql security definer set search_path = public as $$
-declare v_id uuid; v_base numeric; v_start date := date_trunc('month', p_start)::date; i integer;
+declare v_id uuid;
 begin
   if not public.is_admin() then raise exception 'No autorizado'; end if;
   if p_name is null or char_length(btrim(p_name)) not between 1 and 80 then raise exception 'Nombre invalido'; end if;
   if p_total is null or p_total <= 0 then raise exception 'Monto invalido'; end if;
-  if p_months is null or p_months not between 1 and 24 then raise exception 'Meses invalidos (1 a 24)'; end if;
-  insert into public.general_debts (name, total, months, start_month) values (btrim(p_name), p_total, p_months, v_start) returning id into v_id;
-  v_base := floor(p_total / p_months);
-  for i in 1..p_months loop
-    insert into public.general_expenses (month, name, amount, debt_id)
-    values ((v_start + ((i - 1) || ' month')::interval)::date,
-            case when p_months = 1 then btrim(p_name) else btrim(p_name) || ' (' || i || '/' || p_months || ')' end,
-            case when i = p_months then p_total - v_base * (p_months - 1) else v_base end, v_id);
-  end loop;
+  insert into public.general_debts (name, total) values (btrim(p_name), p_total) returning id into v_id;
   return v_id;
 end $$;
 
--- Borra la deuda y todas sus cuotas.
+-- Abona a una deuda general (nunca pasa del total).
+create or replace function public.admin_pay_general_debt(p_id uuid, p_amount numeric) returns numeric
+language plpgsql security definer set search_path = public as $$
+declare v_paid numeric;
+begin
+  if not public.is_admin() then raise exception 'No autorizado'; end if;
+  if p_amount is null or p_amount <= 0 then raise exception 'Monto invalido'; end if;
+  update public.general_debts set paid = least(total, paid + p_amount) where id = p_id returning paid into v_paid;
+  if v_paid is null then raise exception 'Deuda no encontrada'; end if;
+  return v_paid;
+end $$;
+
+-- Borra la deuda general.
 create or replace function public.admin_delete_general_debt(p_id uuid) returns void
 language plpgsql security definer set search_path = public as $$
 begin
@@ -312,7 +327,7 @@ create policy ge_admin_upd on public.general_expenses for update to authenticate
 drop policy if exists ge_admin_del on public.general_expenses;
 create policy ge_admin_del on public.general_expenses for delete to authenticated using (public.is_admin());
 
--- general_debts: lectura publica; se crean y borran solo con las funciones del admin.
+-- general_debts: lectura publica; se crean, abonan y borran solo con las funciones del admin.
 drop policy if exists gd_select on public.general_debts;
 create policy gd_select on public.general_debts for select to anon, authenticated using (true);
 
@@ -354,9 +369,9 @@ revoke all on function public.norm_whatsapp(text), public.set_my_whatsapp(text),
 revoke all on function public.panel_usuarios(date) from public;
 grant execute on function public.panel_usuarios(date) to anon, authenticated;
 revoke all on function public.admin_set_status(uuid,text), public.admin_copy_expenses(date,date),
-       public.admin_add_general_debt(text,numeric,integer,date), public.admin_delete_general_debt(uuid) from public;
+       public.admin_add_general_debt(text,numeric), public.admin_pay_general_debt(uuid,numeric), public.admin_delete_general_debt(uuid) from public;
 grant execute on function public.admin_set_status(uuid,text), public.admin_copy_expenses(date,date),
-       public.admin_add_general_debt(text,numeric,integer,date), public.admin_delete_general_debt(uuid) to authenticated;
+       public.admin_add_general_debt(text,numeric), public.admin_pay_general_debt(uuid,numeric), public.admin_delete_general_debt(uuid) to authenticated;
 grant execute on function public.is_admin(), public.is_approved(), public.is_supervisor(),
        public.set_my_whatsapp(text), public.admin_set_supervisor(uuid,boolean) to authenticated;
 

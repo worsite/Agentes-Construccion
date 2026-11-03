@@ -144,6 +144,7 @@ body{padding-bottom:calc(86px + env(safe-area-inset-bottom))}
 .trio>div{background:rgba(255,255,255,.18);border-radius:12px;padding:10px 8px;text-align:center}
 .trio .k{font-size:.72rem;color:rgba(255,255,255,.9);line-height:1.2}
 .trio .v{font-weight:800;font-size:1rem;font-variant-numeric:tabular-nums;margin-top:2px}
+.hero .chip.debt{background:#FFE3E0;color:#B3261E}.hero .chip.debt .small{color:#8A1F17;font-weight:600}.hero .chip.debt .num{font-size:1.05rem}
 .btn.wa{background:#128C4A;color:#fff;width:100%}
 .btn.light{background:#fff;color:#0A4F6E;width:100%;margin-top:14px}
 .btn.block{width:100%;min-height:54px;font-size:1.05rem}
@@ -312,18 +313,13 @@ const aprobado = () => S.profile && S.profile.status === 'approved';
 const esAdmin = () => aprobado() && S.profile.is_admin;
 const esSupervisor = () => aprobado() && S.profile.is_supervisor && !S.profile.is_admin;
 
-/** Para cada deuda general: sus cuotas, lo ya pagado y el avance. */
-function resumenDeudas(deudas, todos) {
-  return deudas.map(d => {
-    const partes = todos.filter(g => g.debt_id === d.id).sort((a, b) => a.month.localeCompare(b.month));
-    const pagado = partes.filter(g => g.paid).reduce((a, g) => a + Number(g.amount), 0);
-    return { d, partes, pagado, pagadas: partes.filter(g => g.paid).length, resta: Math.max(0, Number(d.total) - pagado) };
-  });
-}
-const tarjetaDeuda = (x, extra = '') => `<li><div class="row between nw"><span><strong>${esc(x.d.name)}</strong>
-    <span class="muted small"> · ${x.pagadas} de ${x.partes.length} cuotas pagadas</span></span><span class="num">${money(x.d.total)}</span></div>
+/** Deudas generales: lo abonado y lo que falta. NO entran en la cuota ni en el total del mes. */
+const resumenDeudas = deudas => deudas.map(d => ({ d, pagado: Number(d.paid), resta: Math.max(0, Number(d.total) - Number(d.paid)) }));
+const totalDeuda = deudas => resumenDeudas(deudas).reduce((a, x) => a + x.resta, 0);
+const tarjetaDeuda = (x, extra = '') => `<li><div class="row between nw"><span><strong>${esc(x.d.name)}</strong></span>
+    <span class="num" style="color:${x.resta > 0 ? 'var(--danger)' : 'var(--ok)'}">${x.resta > 0 ? '-' + money(x.resta) : money(0)}</span></div>
     <div style="margin:8px 0 4px">${bar(x.pagado, Number(x.d.total), 'Avance de ' + x.d.name)}</div>
-    <div class="muted small">Pagado ${money(x.pagado)} · Falta ${money(x.resta)}</div>${extra}</li>`;
+    <div class="muted small">Total ${money(x.d.total)} · Abonado ${money(x.pagado)} · Falta ${money(x.resta)}</div>${extra}</li>`;
 
 /** Cuanto deberia llevar pagado cada usuario a hoy en el mes `mes` (mes pasado: toda la cuota; futuro: nada). */
 function aFecha(mes, r) {
@@ -400,13 +396,13 @@ const selectorMes = () => `<div class="month"><button class="btn ghost sm" data-
 /* ===== Panel general (publico) ===== */
 async function vistaPanel() {
   const m = S.mes;
-  const [usuarios, todos, deudas] = await Promise.all([
+  const [usuarios, gastos, deudas] = await Promise.all([
     q(sb.rpc('panel_usuarios', { p_month: m })),
-    q(sb.from('general_expenses').select('*').order('created_at')),
+    q(sb.from('general_expenses').select('*').eq('month', m).order('created_at')),
     q(sb.from('general_debts').select('*').order('created_at')).catch(() => []),
   ]);
-  const gastos = todos.filter(g => g.month === m);
-  const dgs = resumenDeudas(deudas, todos).filter(x => x.resta > 0 || x.partes.some(g => g.month === m));
+  const dgs = resumenDeudas(deudas);
+  const deudaTotal = totalDeuda(deudas);
   const r = reparto(usuarios, gastos);
   const falta = Math.max(0, r.total - r.aportado);
   const gPagado = gastos.filter(g => g.paid).reduce((a, g) => a + Number(g.amount), 0);
@@ -425,16 +421,17 @@ async function vistaPanel() {
         <div class="chip"><div class="muted small">Cada usuario paga</div><div class="num">${money(r.cuota)}</div></div>
         <div class="chip"><div class="muted small">Mínimo por día (${DIAS_META} días)</div><div class="num">${money(r.diaria)}</div></div>
         <div class="chip"><div class="muted small">Usuarios</div><div class="num">${r.n}</div></div>
+        <div class="chip ${deudaTotal > 0 ? 'debt' : ''}"><div class="small">Deuda general</div><div class="num">${deudaTotal > 0 ? '-' + money(deudaTotal) : money(0)}</div></div>
       </div>
     </section>
     <div class="grid two">
       <section class="card"><h2>Gastos generales</h2>
-        ${gastos.length ? `<ul class="list">${gastos.map(g => `<li class="row between"><span>${esc(g.name)}${g.debt_id ? ' <span class="pill pend">Deuda general</span>' : ''}</span>
+        ${gastos.length ? `<ul class="list">${gastos.map(g => `<li class="row between"><span>${esc(g.name)}</span>
           <span class="row" style="gap:8px"><span class="num">${money(g.amount)}</span>
           <span class="pill ${g.paid ? 'ok' : 'pend'}">${g.paid ? 'Pagado' : 'Pendiente'}</span></span></li>`).join('')}</ul>
           <p class="muted small">Servicios ya pagados: ${money(gPagado)} de ${money(r.total)}</p>`
           : `<div class="empty">No hay gastos registrados para este mes.</div>`}</section>
-      ${dgs.length ? `<section class="card"><h2>Deudas generales</h2><p class="muted small">Se reparten entre todos y ya están sumadas a la cuota de cada mes.</p>
+      ${dgs.length ? `<section class="card"><h2>Deudas generales</h2><p class="muted small">No suman a la cuota del mes: se muestran aparte hasta saldarse.</p>
         <ul class="list">${dgs.map(x => tarjetaDeuda(x)).join('')}</ul></section>` : ''}
       <section class="card"><h2>Avance por persona</h2>
         ${usuarios.length ? `<ul class="list">${usuarios.map(u => { const deb = Math.max(0, aFecha(m, r) - Number(u.paid)); return `<li>
@@ -798,16 +795,15 @@ async function vistaSupervision() {
 /* ===== Admin ===== */
 async function vistaAdmin() {
   const m = S.mes;
-  const [perfiles, todos, usuarios, deudas] = await Promise.all([
+  const [perfiles, gastos, usuarios, deudas] = await Promise.all([
     q(sb.from('profiles').select('*').order('created_at')),
-    q(sb.from('general_expenses').select('*').order('created_at')),
+    q(sb.from('general_expenses').select('*').eq('month', m).order('created_at')),
     q(sb.rpc('panel_usuarios', { p_month: m })),
     q(sb.from('general_debts').select('*').order('created_at')).catch(() => []),
   ]);
-  const gastos = todos.filter(g => g.month === m);
   const r = reparto(usuarios, gastos);
   const pend = perfiles.filter(p => p.status === 'pending');
-  const dgs = resumenDeudas(deudas, todos);
+  const dgs = resumenDeudas(deudas);
 
   const solicitudes = `<section class="card"><h2>Solicitudes de perfil (${pend.length})</h2>
     ${pend.length ? `<ul class="list">${pend.map(p => `<li class="row between"><span class="row" style="gap:10px">${avatar(p.display_name)}<strong>${esc(p.display_name)}</strong></span>
@@ -837,26 +833,28 @@ async function vistaAdmin() {
         <label><input type="radio" name="tipo" value="deuda" data-change="tipo"><span>Deuda general</span></label></div></div>
       <div class="field"><label for="gn">Nombre</label><input id="gn" name="nombre" maxlength="80" placeholder="Gas, agua, reparación..." required></div>
       <div class="field"><label for="gm" id="gmL">Monto (COP)</label><input id="gm" name="monto" inputmode="numeric" autocomplete="off" placeholder="50.000" data-fmt required></div>
-      <div class="field" id="mesesBox" hidden><label for="gme">¿En cuántos meses se paga?</label>
-        <select id="gme" name="meses">${[1, 2, 3, 4, 5, 6, 9, 12].map(n => `<option value="${n}">${n === 1 ? '1 mes (todo de una vez)' : n + ' meses'}</option>`).join('')}</select>
-        <p class="muted small">Se reparte en cuotas mensuales desde ${esc(nombreMes(m))} y se suma a la cuota de todos los usuarios.</p></div>
+      <p class="muted small" id="avisoDeuda" hidden>La deuda general <strong>no</strong> suma a la cuota del mes: se muestra aparte, en rojo y en negativo, hasta que la marques como pagada.</p>
       <p class="err" data-err hidden></p>
       <button class="btn block" type="submit" id="gBtn">Agregar gasto</button>
     </form></section>
 
   <section class="card"><h2>Gastos de ${esc(nombreMes(m))}</h2>
     ${gastos.length ? `<ul class="list">${gastos.map(g => `<li><div class="row between nw">
-      <label class="row" style="margin:0;flex-wrap:nowrap"><input type="checkbox" style="width:24px;min-height:24px" data-change="gasto-pagado" data-id="${esc(g.id)}"${g.paid ? ' checked' : ''}> <span>${esc(g.name)}${g.debt_id ? ' <span class="pill pend">Deuda general</span>' : ''}</span></label>
+      <label class="row" style="margin:0;flex-wrap:nowrap"><input type="checkbox" style="width:24px;min-height:24px" data-change="gasto-pagado" data-id="${esc(g.id)}"${g.paid ? ' checked' : ''}> <span>${esc(g.name)}</span></label>
       <span class="pill ${g.paid ? 'ok' : 'pend'}">${g.paid ? 'Pagado' : 'Pendiente'}</span></div>
       <form data-form="gasto-monto" data-id="${esc(g.id)}" class="row" style="margin-top:8px;flex-wrap:nowrap" novalidate>
         <input aria-label="Monto de ${esc(g.name)}" name="monto" inputmode="numeric" data-fmt value="${esc(Math.round(Number(g.amount)).toLocaleString('es-CO'))}">
         <button class="btn ghost sm" type="submit">Guardar</button>
-        ${g.debt_id ? '' : `<button class="btn danger sm" type="button" data-action="del" data-t="general_expenses" data-id="${esc(g.id)}" data-confirm="¿Eliminar este gasto?">Eliminar</button>`}</form></li>`).join('')}</ul>`
+        <button class="btn danger sm" type="button" data-action="del" data-t="general_expenses" data-id="${esc(g.id)}" data-confirm="¿Eliminar este gasto?">Eliminar</button></form></li>`).join('')}</ul>`
       : `<div class="empty">No hay gastos este mes.</div>`}
     <button class="btn ghost" data-action="copiar" style="margin-top:12px">Copiar gastos del mes anterior</button></section>
 
   ${dgs.length ? `<section class="card"><h2>Deudas generales</h2>
-    <ul class="list">${dgs.map(x => tarjetaDeuda(x, `<div style="margin-top:8px"><button class="btn danger sm" data-action="borrar-dg" data-id="${esc(x.d.id)}" data-confirm="Se borrará la deuda y todas sus cuotas. ¿Continuar?">Eliminar deuda</button></div>`)).join('')}</ul></section>` : ''}
+    <p class="muted small">Total pendiente: <strong style="color:var(--danger)">${totalDeuda(deudas) > 0 ? '-' + money(totalDeuda(deudas)) : money(0)}</strong></p>
+    <ul class="list">${dgs.map(x => tarjetaDeuda(x, `<form data-form="abono-dg" data-id="${esc(x.d.id)}" class="row" style="margin-top:8px;flex-wrap:nowrap" novalidate>
+        ${x.resta > 0 ? `<input aria-label="Abono a ${esc(x.d.name)}" name="monto" inputmode="numeric" data-fmt placeholder="Abono">
+        <button class="btn sm" type="submit">Abonar</button><button class="btn ghost sm" type="button" data-action="saldar-dg" data-id="${esc(x.d.id)}" data-v="${x.resta}">Pagada</button>` : '<span class="pill ok">Saldada</span>'}
+        <button class="btn danger sm" type="button" data-action="borrar-dg" data-id="${esc(x.d.id)}" data-confirm="Se borrará la deuda. ¿Continuar?">Eliminar</button></form><p class="err" data-err hidden></p>`)).join('')}</ul></section>` : ''}
   ${supervisorCard}
   ${pend.length ? '' : solicitudes}
   <p class="muted small">La cuota se calcula sola: gastos del mes entre usuarios aprobados. Si entra un usuario nuevo, la cuota de todos baja.</p>`;
@@ -906,6 +904,10 @@ const FORMS = {
     await q(sb.rpc('set_my_whatsapp', { p_number: wa }));
     await cargarSesion(); toast('WhatsApp guardado'); location.hash = esSupervisor() ? '#/supervision' : '#/perfil'; await render();
   },
+  async 'abono-dg'(f) {
+    await q(sb.rpc('admin_pay_general_debt', { p_id: f.dataset.id, p_amount: montoReq(f) }));
+    toast('Abono registrado'); await render();
+  },
   async plan(f) {
     const txt = val(f, 'monto'); const v = txt === '' ? 0 : parseMonto(txt);
     if (!(v >= 0)) throw new Error('Escribe un monto válido (0 para no incluirla).');
@@ -945,7 +947,7 @@ const FORMS = {
     const nombre = val(f, 'nombre'); if (!nombre) throw new Error('Escribe el nombre del gasto.');
     const tipo = (f.querySelector('input[name=tipo]:checked') || {}).value;
     if (tipo === 'deuda') {
-      await q(sb.rpc('admin_add_general_debt', { p_name: nombre, p_total: montoReq(f), p_months: Number(f.elements.meses.value) || 1, p_start: S.mes }));
+      await q(sb.rpc('admin_add_general_debt', { p_name: nombre, p_total: montoReq(f) }));
       toast('Deuda general agregada');
     } else {
       await q(sb.from('general_expenses').insert({ month: S.mes, name: nombre, amount: montoReq(f) }));
@@ -985,6 +987,9 @@ const ACCIONES = {
     await q(sb.rpc('admin_set_supervisor', { p_user: el.dataset.id, p_on: el.dataset.on === '1' }));
     toast(el.dataset.on === '1' ? 'Supervisor asignado' : 'Supervisor quitado'); await render();
   },
+  async 'saldar-dg'(el) {
+    await q(sb.rpc('admin_pay_general_debt', { p_id: el.dataset.id, p_amount: Number(el.dataset.v) })); toast('Deuda saldada'); await render();
+  },
   async 'borrar-dg'(el) {
     if (!confirm(el.dataset.confirm)) return;
     await q(sb.rpc('admin_delete_general_debt', { p_id: el.dataset.id })); toast('Deuda eliminada'); await render();
@@ -1010,7 +1015,7 @@ document.addEventListener('change', async ev => {
   try {
     if (el.dataset.change === 'tipo') {
       const deuda = el.value === 'deuda';
-      document.getElementById('mesesBox').hidden = !deuda;
+      document.getElementById('avisoDeuda').hidden = !deuda;
       document.getElementById('gBtn').textContent = deuda ? 'Agregar deuda general' : 'Agregar gasto';
       document.getElementById('gmL').textContent = deuda ? 'Monto total (COP)' : 'Monto (COP)';
     }

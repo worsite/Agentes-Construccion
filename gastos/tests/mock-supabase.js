@@ -102,15 +102,15 @@
       }
       if (name === 'admin_set_status') { db.profiles.find(p => p.id === a.p_user).status = a.p_status; return { data: null, error: null }; }
       if (name === 'admin_add_general_debt') {
-        if (!(a.p_total > 0) || !(a.p_months >= 1 && a.p_months <= 24)) return { data: null, error: { message: 'Monto invalido' } };
-        const d = { id: uuid(), name: a.p_name, total: a.p_total, months: a.p_months, start_month: a.p_start, created_at: new Date().toISOString() };
-        db.general_debts.push(d); const base = Math.floor(a.p_total / a.p_months);
-        for (let i = 1; i <= a.p_months; i++) {
-          const [y, mm] = a.p_start.split('-').map(Number); const dt = new Date(y, mm - 1 + i - 1, 1);
-          db.general_expenses.push({ id: uuid(), month: `${dt.getFullYear()}-${pad(dt.getMonth() + 1)}-01`, name: a.p_months === 1 ? a.p_name : `${a.p_name} (${i}/${a.p_months})`,
-            amount: i === a.p_months ? a.p_total - base * (a.p_months - 1) : base, paid: false, debt_id: d.id, created_at: new Date().toISOString() });
-        }
-        return { data: d.id, error: null };
+        if (!(a.p_total > 0)) return { data: null, error: { message: 'Monto invalido' } };
+        const d = { id: uuid(), name: a.p_name, total: a.p_total, paid: 0, created_at: new Date().toISOString() };
+        db.general_debts.push(d); return { data: d.id, error: null };
+      }
+      if (name === 'admin_pay_general_debt') {
+        const d = db.general_debts.find(x => x.id === a.p_id);
+        if (!(a.p_amount > 0)) return { data: null, error: { message: 'Monto invalido' } };
+        if (!d) return { data: null, error: { message: 'Deuda no encontrada' } };
+        d.paid = Math.min(d.total, d.paid + a.p_amount); return { data: d.paid, error: null };
       }
       if (name === 'admin_delete_general_debt') {
         db.general_debts = db.general_debts.filter(d => d.id !== a.p_id); db.general_expenses = db.general_expenses.filter(g => g.debt_id !== a.p_id);

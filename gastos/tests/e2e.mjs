@@ -238,50 +238,68 @@ await prueba('modo oscuro: sin scroll horizontal', async () => {
   assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
 });
 console.log('Admin: gastos y deuda general');
-await prueba('el formulario alterna entre gasto del mes y deuda general', async () => {
+await prueba('el formulario alterna entre gasto del mes y deuda general (con aviso de que no suma a la cuota)', async () => {
   await page.evaluate(() => document.documentElement.setAttribute('data-theme', 'light')); await ir('#/admin');
-  assert.equal(await page.locator('#mesesBox').isVisible(), false); assert.match(await page.locator('#gBtn').innerText(), /Agregar gasto/);
+  assert.equal(await page.locator('#avisoDeuda').isVisible(), false); assert.match(await page.locator('#gBtn').innerText(), /Agregar gasto/);
   await page.check('input[name=tipo][value=deuda]');
-  assert.equal(await page.locator('#mesesBox').isVisible(), true); assert.match(await page.locator('#gBtn').innerText(), /Agregar deuda general/);
+  assert.equal(await page.locator('#avisoDeuda').isVisible(), true); assert.match(await page.locator('#gBtn').innerText(), /Agregar deuda general/);
+  assert.equal(await page.locator('#gme').count(), 0);                   // ya no hay "cuotas en N meses"
 });
-await prueba('crear una deuda general la reparte en cuotas y sube la cuota de todos', async () => {
-  await page.fill('#gn', 'Reparación'); await page.fill('#gm', '300.000'); await page.selectOption('#gme', '3');
+await prueba('una deuda general NO suma al total del mes ni a la cuota', async () => {
+  const antes = await txt(); assert.match(antes, /Cada uno paga\s*\$\s?40\.000/);
+  await page.fill('#gn', 'Reparación'); await page.fill('#gm', '300.000');
   await page.click('#gBtn'); await page.waitForTimeout(300);
   const t = await txt();
-  assert.match(t, /Total de gastos de[\s\S]*\$\s?220\.000/);          // 120.000 + 100.000 (primera cuota)
-  assert.match(t, /Cada uno paga\s*\$\s?73\.334/);                     // ceil(220.000 / 3)
-  assert.match(t, /Reparación \(1\/3\)/); assert.match(t, /0 de 3 cuotas pagadas/);
-  assert.equal(await page.locator('form[data-form=gasto-monto]:has(input[aria-label*="Reparación"]) button[data-action=del]').count(), 0); // las cuotas no se borran sueltas
-  assert.equal(await page.evaluate(() => window.__db.general_expenses.filter(g => g.debt_id).reduce((s, g) => s + g.amount, 0)), 300000);
+  assert.match(t, /Total de gastos de[\s\S]*\$\s?120\.000/); assert.match(t, /Cada uno paga\s*\$\s?40\.000/);   // sin cambios
+  assert.match(t, /Total pendiente:\s*-\s?\$\s?300\.000/); assert.match(t, /Falta \$\s?300\.000/);
+  assert.equal(await page.evaluate(() => window.__db.general_expenses.some(g => g.debt_id)), false);        // no genera gastos
 });
-await prueba('marcar una cuota como pagada avanza la deuda; se ve en el panel publico', async () => {
-  await page.check('label:has-text("Reparación (1/3)") input[data-change=gasto-pagado]'); await page.waitForTimeout(250);
-  assert.match(await txt(), /1 de 3 cuotas pagadas/); assert.match(await txt(), /Pagado \$\s?100\.000 · Falta \$\s?200\.000/);
-  await salir(); await ir('#/'); const t = await txt();
-  assert.match(t, /Deudas generales/); assert.match(t, /Reparación/); assert.match(t, /Deuda general/);
-  assert.match(t, /Cada usuario paga\s*\$\s?73\.334/);
-  await ir('#/'); await page.click('button[data-action=mes][data-n="1"]'); await page.waitForTimeout(250);
-  assert.match(await txt(), /Reparación \(2\/3\)/);                    // sigue el mes siguiente hasta saldarse
-  await page.click('button[data-action=mes][data-n="-1"]');
+await prueba('el panel muestra "Deuda general" en rojo y en negativo junto a Usuarios', async () => {
+  await ir('#/'); const t = await txt();
+  assert.match(t, /Falta por pagar este mes\s*\$\s?[\d.]+/); assert.doesNotMatch(t, /Falta por pagar este mes\s*\$\s?420\.000/);
+  assert.match(t, /Usuarios\s*3\s*Deuda general\s*-\s?\$\s?300\.000/);
+  const chip = page.locator('.hero .chip.debt');
+  assert.equal(await chip.count(), 1); assert.match(await chip.innerText(), /-\s?\$\s?300\.000/);
+  const [color, fondo] = await chip.evaluate(el => { const c = getComputedStyle(el.querySelector('.num')); return [c.color, getComputedStyle(el).backgroundColor]; });
+  assert.equal(color, 'rgb(179, 38, 30)'); assert.equal(fondo, 'rgb(255, 227, 224)');                     // rojo sobre fondo claro (contraste 5.6:1)
+  assert.match(t, /Deudas generales[\s\S]*Reparación/); assert.match(t, /Total \$\s?300\.000 · Abonado \$\s?0 · Falta \$\s?300\.000/);
 });
-await prueba('copiar gastos del mes anterior no duplica las cuotas de la deuda', async () => {
-  await login('miguel'); await ir('#/admin'); await page.click('button[data-action=mes][data-n="1"]'); await page.waitForTimeout(200);
-  const antes = await page.evaluate(() => window.__db.general_expenses.length);
-  await page.click('button[data-action=copiar]'); await page.waitForTimeout(250);
-  const despues = await page.evaluate(() => window.__db.general_expenses.filter(g => g.name === 'Reparación (1/3)').length);
-  assert.equal(despues, 1); await page.click('button[data-action=mes][data-n="-1"]');
+await prueba('abonar baja la deuda; saldarla la deja en $ 0 y el recuadro deja de ser rojo', async () => {
+  await ir('#/admin');
+  await page.fill('form[data-form=abono-dg] input[name=monto]', '100.000'); await page.click('form[data-form=abono-dg] button[type=submit]'); await page.waitForTimeout(300);
+  assert.match(await txt(), /Total pendiente:\s*-\s?\$\s?200\.000/);
+  await ir('#/'); assert.match(await txt(), /Deuda general\s*-\s?\$\s?200\.000/);
+  await ir('#/admin'); await page.click('button[data-action=saldar-dg]'); await page.waitForTimeout(300);
+  assert.match(await txt(), /Saldada/);
+  await ir('#/'); const t = await txt(); assert.match(t, /Deuda general\s*\$\s?0\b/); assert.doesNotMatch(t, /Deuda general\s*-/);
+  assert.equal(await page.locator('.hero .chip.debt').count(), 0);
+  assert.equal(await page.evaluate(() => window.__db.general_debts[0].paid), 300000);
 });
-await prueba('eliminar la deuda general borra todas sus cuotas (con confirmacion)', async () => {
+await prueba('un abono mayor al total no pasa del total', async () => {
+  const r = await page.evaluate(async () => { const c = window.supabase.createClient(); const id = window.__db.general_debts[0].id; return (await c.rpc('admin_pay_general_debt', { p_id: id, p_amount: 999999 })).data; });
+  assert.equal(r, 300000);
+});
+await prueba('abono invalido muestra aviso', async () => {
+  await ir('#/admin'); await page.fill('#gn', 'Otra'); await page.check('input[name=tipo][value=deuda]'); await page.fill('#gm', '50.000'); await page.click('#gBtn'); await page.waitForTimeout(300);
+  await page.fill('form[data-form=abono-dg] >> nth=1 >> input[name=monto]', 'abc'); await page.click('form[data-form=abono-dg] >> nth=1 >> button[type=submit]'); await page.waitForTimeout(200);
+  assert.match(await txt() + await page.locator('#toast').innerText(), /monto válido/);
+});
+await prueba('eliminar una deuda general pide confirmacion', async () => {
   page.once('dialog', d => d.accept());
-  await page.click('button[data-action=borrar-dg]'); await page.waitForTimeout(300);
-  assert.equal(await page.evaluate(() => window.__db.general_debts.length + window.__db.general_expenses.filter(g => g.debt_id).length), 0);
-  assert.doesNotMatch(await txt(), /Reparación/); assert.match(await txt(), /Cada uno paga\s*\$\s?40\.000/);
+  await page.click('button[data-action=borrar-dg] >> nth=1'); await page.waitForTimeout(300);
+  assert.equal(await page.evaluate(() => window.__db.general_debts.length), 1);
+});
+await prueba('copiar gastos del mes anterior sigue funcionando', async () => {
+  await ir('#/admin'); await page.click('button[data-action=mes][data-n="1"]'); await page.waitForTimeout(200);
+  await page.click('button[data-action=copiar]'); await page.waitForTimeout(250);
+  assert.match(await txt(), /Gas/); await page.click('button[data-action=mes][data-n="-1"]');
 });
 await prueba('admin en celular: sin scroll horizontal y controles tactiles de 44 px', async () => {
   assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
   const chicos = await page.$$eval('#app .btn, #app select, #app input:not([type=checkbox]):not([type=radio])', els => els.filter(e => e.offsetParent && e.getBoundingClientRect().height < 44).map(e => e.outerHTML.slice(0, 60)));
   assert.deepEqual(chicos, []);
 });
+
 console.log('WhatsApp obligatorio y supervisor');
 await prueba('el registro guardo el WhatsApp normalizado con el 57', async () => {
   assert.equal(await page.evaluate(() => window.__db.profiles.find(p => p.username === 'luis').whatsapp), '573005551212');
